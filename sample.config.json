@@ -18,5 +18,6 @@
         "2": [["Justin Thomas", "Jordan Spieth", "Jon Rahm", "Brooks Koepka"]]
     },
     "min_lineup_salary": 49200,
-    "max_pct_off_optimal": 0.2
+    "max_pct_off_optimal": 0.2,
+    "pct_field_using_stacks" : 0.75
 }

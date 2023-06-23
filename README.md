@@ -1,4 +1,4 @@
-# MLB Optimizer and GPP Utilities
+#  Optimizer and GPP Utilities
 
 Packaged in this repository is an MLB GPP Simulator for DraftKings (with FanDuel on the way), along with other tools you might find useful in helping you win your Cash games, Head-to-heads and Tournaments. You'll find installation and usage instructions below.
 
@@ -25,9 +25,13 @@ To install these tools, you may either clone this repository or download the rep
 
 After you have cloned or downloaded the code base, you must import player contest data from DraftKings or FanDuel. Reference the screenshots below for your relative site. You will need to rename these files to `player_ids.csv`, and place into their relative directory (`dk_data/` or `fd_data/`). These directories should be folders located in the same directory as `src/` and `output/`, and will hold relevant data for each site.
 
-After you have the player data, you must import data from Awesemo, namely the projections, ownership, boom/bust tool. Download them as CSV, and rename them to match the image below. These will go in either `dk_data/` or `fd_data/` depending on which data you downloaded.
+After you have the player data, you must import data from your trusted DFS site, namely the projections, ownership, standard deviation, and field stacks (for MLB). Download them as CSV, and rename them to match the image below. These will go in either `dk_data/` or `fd_data/` depending on which data you downloaded.
 
 ![Directory image](readme_images/directory.png)
+
+Save stack ownership in the file `team_stacks.csv` with the columns "Team" and "Own%" where "Team" is the team abbreviation for each team (e.g. 'LAA') and "Own%" is what percentage of the field uses that stack.
+
+![Stacks Image](readme_images/team_stacks.png)
 
 ## Usage
 
@@ -91,23 +95,24 @@ The structure for the config is as follows:
     "randomness": 100,
     "at_least": {
         "2": [
-            ["Justin Thomas", "Jordan Spieth", "Tiger Woods"] // This will use at least 2 of these players
+            ["Mike Trout","Shohei Ohtani"] // This will use at least 2 of these players
         ],
         "1": [
-            ["Justin Thomas", "Jordan Spieth"] // This will use at least 1 of these players
+            ["Ozzie Albies", "Jake Burger"] // This will use at least 1 of these players
         ]
     },
     "at_most": {
         "1": [
-            ["Justin Thomas", "Jordan Spieth"], // Will use at most 1 of these players, useful if you're trying to avoid specific tee time stacks.
-            ["Jon Rahm", "Brooks Koepka"]
+            ["Julio Rodriguez", "Ty France], // Will use at most 1 of these players
         ],
         "2": [
-            ["Justin Thomas", "Jordan Spieth", "Jon Rahm", "Brooks Koepka"] // Will use at most 2 of these players
+            ["Matt Olson", "Mike Trout", "Miguel Cabrera"] // Will use at most 2 of these players
         ]
     },
     "min_lineup_salary": 49200,
-    "max_pct_off_optimal": 0.2
+    "max_pct_off_optimal": 0.2,
+    "pct_field_using_stacks" : 0.75  // this sets 75% of the field to use stacking -- the higher this number is the more complext the problem becomes and the longer it takes lineups to be generated.
+
 }
 ```
 
@@ -126,6 +131,8 @@ Data is stored in the `output/` directory. Note that subsequent runs of the tool
 ### Simulation Methodology
 
 We assume player fantasy point distributions are [gaussian](https://en.wikipedia.org/wiki/Normal_distribution) and create [monte carlo simulations](https://en.wikipedia.org/wiki/Monte_Carlo_method) using the provided fantasy point projections and standard deviations. For the lineup generation process, we take the provided `tournament_lineups.csv` file (if `file` is provided as an argument in the terminal) and then sample from the provided ownership projections to fill the rest of the contest, using the field size provided in the `contest_structure.csv` file. The `max_pct_off_optimal` configuration allows the user to be specific about which generated lineups are kept and which are thrown out, based on the lineup's total projected fantasy points. Once the lineups are generated and the simulated fantasy point distributions are created, we determine the rank of each lineup for each sim and then allocate prize money based on the values provided in the `contest_structure.csv` file.
+
+The first iteration of this sims module assumes that player fantasy point distributions are independent, for baseball this is obviously incorrect and will be fixed in a later update.
 
 ### IMPORTANT NOTES
 
