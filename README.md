@@ -61,7 +61,7 @@ Where:
 
         -   Additionally, you may opt to upload lineups from a file rather than have them randomly generated/simulated. To specify this option, you will add `file` as a flag in your command like so: `python .\main.py <site> sim cid file 10000`. You must have an input file called `tournament_lineups.csv` in the base input directory. This allows you to upload specifically-tailored lineups that you feel are more representative of your contest than the ones generated. It also has the added benefit of being much faster than generating lineups. For example, you may take the output of the `opto` process, and rename the file to `tournament_lineups.csv`, and use those as your input for the `sim` process. The simulator will now automatically generate the difference between the number of lineups in the `tournament_lineups.csv` file and the `<field_size>` parameter from either the `contest_structure.csv` or the shell prompt.
 
-        The `tournament_lineups.csv` file requires six columns, one for each player in a lineup. Players can either have their full name or full name and player id in parentheses.
+        The `tournament_lineups.csv` file requires ten columns, one for each player in a (draftkings) lineup. Players can either have their full name or full name and player id in parentheses.
 
         ![Example usage](readme_images/tournament_lineups.png)
 
@@ -86,11 +86,12 @@ The structure for the config is as follows:
 
 ```
 {
-    "projection_path": "projections.csv", // This is where projections are loaded from -- the required columns are "Name" and "Fpts"
+    "projection_path": "projections.csv", // This is where projections are loaded from -- the required columns are "Name", "Salary", "Position" and "Fpts"
     "ownership_path": "ownership.csv", // This is where ownership is loaded from -- the required columns are "Name" and "Own%"
     "player_path": "player_ids.csv", // This is where player ids are loaded from -- this is the direct player ID export from DraftKings/Fanduel found on the contest or edit lineups page.
     "boom_bust_path": "boom_bust.csv", // This is where boom/bust data (top golfers) is loaded from -- the required columns are "Name", "stddev", and "ceiling"
-    "contest_structure_path": "contest_structure.csv", // This is where GPP sim tournament strucure is loaded from -- as seen above, the required columns are "Place", "Payout", "Field Size", "Entry Fee"
+    "contest_structure_path": "contest_structure.csv", // This is where GPP sim tournament structure is loaded from -- as seen above, the required columns are "Place", "Payout", "Field Size", "Entry Fee"
+    "team_stacks_path" : "team_stacks.csv", //This is where field ownership is of specific team stacks (minimum 4 players from the same team in a lineup). Required columns are "Team" (abbreviation) and "Own%"
     "projection_minimum": 5,
     "randomness": 100,
     "at_least": {
