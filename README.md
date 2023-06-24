@@ -135,6 +135,10 @@ We assume player fantasy point distributions are [gaussian](https://en.wikipedia
 
 The first iteration of this sims module assumes that player fantasy point distributions are independent, for baseball this is obviously incorrect and will be fixed in a later update.
 
+# Discord
+
+We've created a discord community to talk about updates/best practices/improvements to our simulation modules for every sport here: https://discord.gg/qaZDZhxEEF
+
 ### IMPORTANT NOTES
 
 Currently this repository only works with DraftKings MLB tournaments. FanDuel simulations will be provided at a later date.
