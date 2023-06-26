@@ -1,12 +1,8 @@
 import sys
 from mlb_optimizer import *
 from mlb_gpp_simulator import *
-
-# from PGA_evolutionary_lineup_selector import *
-# from PGA_showdown_optimizer import *
 from windows_inhibitor import *
 
-# from PGA_late_swaptimizer import *
 
 
 def main(arguments):
@@ -25,13 +21,6 @@ def main(arguments):
         opto = MLB_Optimizer(site, num_lineups, num_uniques)
         opto.optimize()
         opto.output()
-
-    # elif process == 'sd':
-    #     num_lineups = arguments[3]
-    #     num_uniques = arguments[4]
-    #     opto = PGA_Showdown_Optimizer(site, num_lineups, num_uniques)
-    #     opto.optimize()
-    #     opto.output()
 
     if process == "sim":
         site = arguments[1]
