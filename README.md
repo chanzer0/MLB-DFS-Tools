@@ -86,10 +86,10 @@ The structure for the config is as follows:
 
 ```
 {
-    "projection_path": "projections.csv", // This is where projections are loaded from -- the required columns are "Name", "Salary", "Position" and "Fpts"
-    "ownership_path": "ownership.csv", // This is where ownership is loaded from -- the required columns are "Name" and "Own%"
-    "player_path": "player_ids.csv", // This is where player ids are loaded from -- this is the direct player ID export from DraftKings/Fanduel found on the contest or edit lineups page.
-    "boom_bust_path": "boom_bust.csv", // This is where boom/bust data (top golfers) is loaded from -- the required columns are "Name", "stddev", and "ceiling"
+    "projection_path": "projections.csv", // This is where projections are loaded from -- the required columns are "Name", "Salary", "Pos", "Team" and "Fpts"
+    "ownership_path": "ownership.csv", // This is where ownership is loaded from -- the required columns are "Name", "Team", "Pos" and "Own%"
+    "player_path": "player_ids.csv", // This is where player ids are loaded from -- this is the direct player ID export from DraftKings/Fanduel found on the contest or edit lineups page, no changes are required.
+    "boom_bust_path": "boom_bust.csv", // This is where boom/bust data (top golfers) is loaded from -- the required columns are "Name", "Pos", "Team", "StdDev", and "Ceiling"
     "contest_structure_path": "contest_structure.csv", // This is where GPP sim tournament structure is loaded from -- as seen above, the required columns are "Place", "Payout", "Field Size", "Entry Fee"
     "team_stacks_path" : "team_stacks.csv", //This is where field ownership is of specific team stacks (minimum 4 players from the same team in a lineup). Required columns are "Team" (abbreviation) and "Own%"
     "projection_minimum": 5,
@@ -112,7 +112,9 @@ The structure for the config is as follows:
     },
     "min_lineup_salary": 49200,
     "max_pct_off_optimal": 0.2,
-    "pct_field_using_stacks" : 0.75  // this sets 75% of the field to use stacking -- the higher this number is the more complext the problem becomes and the longer it takes lineups to be generated.
+    "pct_field_using_stacks" : 0.75  // this sets 75% of the field to use stacking -- the higher this number is the more complex the problem becomes and the longer it takes lineups to be generated.,
+    "default_hitter_var" : 0.5, // factor to mutliply a player's projection by if the stddev of their projection is not provided or found
+    "default_pitcher_var" : 0.3 // factor to mutliply a hitter's projection by if the stddev of their projection is not provided or found
 
 }
 ```
@@ -131,7 +133,7 @@ Data is stored in the `output/` directory. Note that subsequent runs of the tool
 
 ### Simulation Methodology
 
-We assume player fantasy point distributions are [gaussian](https://en.wikipedia.org/wiki/Normal_distribution) and create [monte carlo simulations](https://en.wikipedia.org/wiki/Monte_Carlo_method) using the provided fantasy point projections and standard deviations. For the lineup generation process, we take the provided `tournament_lineups.csv` file (if `file` is provided as an argument in the terminal) and then sample from the provided ownership projections to fill the rest of the contest, using the field size provided in the `contest_structure.csv` file. The `max_pct_off_optimal` configuration allows the user to be specific about which generated lineups are kept and which are thrown out, based on the lineup's total projected fantasy points. Once the lineups are generated and the simulated fantasy point distributions are created, we determine the rank of each lineup for each sim and then allocate prize money based on the values provided in the `contest_structure.csv` file.
+We assume pitcher fantasy point distributions are [gaussian](https://en.wikipedia.org/wiki/Normal_distribution) and hitter fantasy point distributions are [gamma](https://en.wikipedia.org/wiki/Gamma_distribution) and create [monte carlo simulations](https://en.wikipedia.org/wiki/Monte_Carlo_method) using the provided fantasy point projections and standard deviations. For the lineup generation process, we take the provided `tournament_lineups.csv` file (if `file` is provided as an argument in the terminal) and then sample from the provided ownership projections to fill the rest of the contest, using the field size provided in the `contest_structure.csv` file. The `max_pct_off_optimal` configuration allows the user to be specific about which generated lineups are kept and which are thrown out, based on the lineup's total projected fantasy points. Once the lineups are generated and the simulated fantasy point distributions are created, we determine the rank of each lineup for each sim and then allocate prize money based on the values provided in the `contest_structure.csv` file.
 
 The first iteration of this sims module assumes that player fantasy point distributions are independent, for baseball this is obviously incorrect and will be fixed in a later update.
 

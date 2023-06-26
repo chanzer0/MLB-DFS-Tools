@@ -1,23 +1,20 @@
 {
-    "projection_path": "projections.csv",
-    "ownership_path": "ownership.csv",
-    "player_path": "player_ids.csv",
-    "boom_bust_path": "boom_bust.csv",
-    "contest_structure_path": "contest_structure.csv",
-    "projection_minimum": 5,
-    "randomness": 100,
-    "at_least": {
-        "2": [["Justin Thomas", "Jordan Spieth", "Tiger Woods"]],
-        "1": [["Justin Thomas", "Jordan Spieth"]]
-    },
-    "at_most": {
-        "1": [
-            ["Justin Thomas", "Jordan Spieth"],
-            ["Jon Rahm", "Brooks Koepka"]
-        ],
-        "2": [["Justin Thomas", "Jordan Spieth", "Jon Rahm", "Brooks Koepka"]]
-    },
-    "min_lineup_salary": 49200,
-    "max_pct_off_optimal": 0.2,
-    "pct_field_using_stacks" : 0.75
+"projection_path": "projections.csv", 
+"ownership_path": "ownership.csv", 
+"player_path": "player_ids.csv",
+"boom_bust_path": "boom_bust.csv", 
+"contest_structure_path": "contest_structure.csv", 
+"team_stacks_path" : "team_stacks.csv",
+"projection_minimum": 5,
+"randomness": 100,
+"at_least": {
+
+},
+"at_most": {
+},
+"min_lineup_salary": 49200,
+"max_pct_off_optimal": 0.2,
+"pct_field_using_stacks" : 0.75,  
+"default_hitter_var" : 0.5, 
+"default_pitcher_var" : 0.3 
 }
