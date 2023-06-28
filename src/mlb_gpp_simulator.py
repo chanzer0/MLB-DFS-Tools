@@ -506,7 +506,7 @@ class MLB_GPP_Simulator:
                                 "Top10": 0,
                                 "ROI": 0,
                                 "Cashes": 0,
-                                "Type": "generated",
+                                "Type": "generated_nostack",
                             }
             else:
                 salary = 0
@@ -528,22 +528,13 @@ class MLB_GPP_Simulator:
                     lineup = np.zeros(shape=pos_matrix.shape[1]).astype(str)
                     plyr_stack_indices = np.where(np.in1d(ids, choices))[0]
                     x=0
-                    q = 0
-                    for p in pos_matrix[plyr_stack_indices,:]:
+                    for p in plyr_stack_indices:
                         if '0.0' in lineup[np.where(p>0)[0]]:
-                            for l in np.where(p>0)[0]:
-                                #print(l, lineup[l])
+                            for l in np.where(pos_matrix[p]>0)[0]:
                                 if lineup[l] == '0.0':
-                                    lineup[l] = choices[q]
+                                    lineup[l] = ids[p]
                                     x+=1
                                     break
-                            q+=1
-#                        else:
-#                            print('no open positions')
-#                            break  
-                    #print(q)
-                    #print(x)
-                    #print(stack_len)
                     if x==stack_len:
                         in_lineup[plyr_stack_indices] =1
                         salary += sum(salaries[plyr_stack_indices])
@@ -555,12 +546,13 @@ class MLB_GPP_Simulator:
                         stack = False
                 for ix, (l,pos) in enumerate(zip(lineup,pos_matrix.T)):
                     # get pitchers irrespective of stack
+#                    print(lu_num,ix, l, pos, k, lineup)
                     if l == '0.0':
                         if k <2: 
                             valid_players = np.where((pos > 0) & (in_lineup == 0))
                             # grab names of players eligible
                             plyr_list = ids[valid_players]
-                            # create np array of probability of being seelcted based on ownership and who is eligible at the position
+                            # create np array of probability of being selected based on ownership and who is eligible at the position
                             prob_list = ownership[valid_players]
                             prob_list = prob_list / prob_list.sum()
                             #try:
@@ -573,11 +565,12 @@ class MLB_GPP_Simulator:
                             salary += salaries[choice_idx]
                             proj += projections[choice_idx]
                             k +=1                         
-                        elif k >1:                        
-                            valid_players = np.where((pos > 0) & (in_lineup == 0))
+                        elif k >1:
+                            #extra condition to remove other players in the team we've already stacked                        
+                            valid_players = np.where((pos > 0) & (in_lineup == 0)& (teams!=team_stack))
                             # grab names of players eligible
                             plyr_list = ids[valid_players]
-                            # create np array of probability of being seelcted based on ownership and who is eligible at the position
+                            # create np array of probability of being selected based on ownership and who is eligible at the position
                             prob_list = ownership[valid_players]
                             prob_list = prob_list / prob_list.sum()
                             #try:
@@ -598,9 +591,9 @@ class MLB_GPP_Simulator:
                 # Must have a reasonable salary
                 if team_stack_len >=stack_len:
                     if salary >= salary_floor and salary <= salary_ceiling:
-                    # Must have a reasonable projection (within 60% of optimal) **people make a lot of bad lineups
+                    # loosening reasonable projection constraint for team stacks
                         reasonable_projection = optimal_score - (
-                            max_pct_off_optimal * optimal_score
+                            (max_pct_off_optimal*1.25) * optimal_score
                         )
                         if proj >= reasonable_projection:
                             mode = statistics.mode(hitter_teams)
@@ -612,7 +605,7 @@ class MLB_GPP_Simulator:
                                     "Top10": 0,
                                     "ROI": 0,
                                     "Cashes": 0,
-                                    "Type": "generated",
+                                    "Type": "generated_stack",
                                 }                
         return lus
 
@@ -796,7 +789,7 @@ class MLB_GPP_Simulator:
                         ceil_p += v["Ceiling"]
                         own_p.append(v["Ownership"])
                         lu_names.append(v["Name"])
-                        if v["Position"] != 'P':
+                        if 'P' not in v["Position"]:
                             lu_teams.append(v['Team'])
                         continue
             counter = collections.Counter(lu_teams)
