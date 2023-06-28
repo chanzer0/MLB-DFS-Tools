@@ -133,7 +133,7 @@ class MLB_GPP_Simulator:
     def get_optimal(self):
         problem = plp.LpProblem('MLB', plp.LpMaximize)
         lp_variables = {self.player_dict[(player, pos_str, team)]['ID']: plp.LpVariable(
-            str(self.player_dict[(player, pos_str, team)]['ID']), cat='Binary') for (player, pos_str, team) in self.player_dict}
+            str(self.player_dict[(player, pos_str, team)]['Name']), cat='Binary') for (player, pos_str, team) in self.player_dict}
 
         # set the objective - maximize fpts
         problem += plp.lpSum(self.player_dict[(player, pos_str, team)]['Fpts'] * lp_variables[self.player_dict[(player, pos_str, team)]['ID']]
@@ -232,6 +232,8 @@ class MLB_GPP_Simulator:
                 # some players have 2 positions - will be listed like 'PG/SF' or 'PF/C'
                 position = [pos for pos in row['position'].split('/')]
                 team = row['teamabbrev']
+                #if team == 'WSH':
+                #    team = 'WAS'
                 pos_str = str(position)
                 if (player_name,pos_str, team) in self.player_dict:
                     self.player_dict[(player_name,pos_str, team)]["ID"] = int(row["id"])
@@ -292,6 +294,8 @@ class MLB_GPP_Simulator:
                 # some players have 2 positions - will be listed like 'PG/SF' or 'PF/C'
                 position = [pos for pos in row['pos'].split('/')]
                 team = row['team']
+                #if team == 'WSH':
+                #    team = 'WAS'
                 pos_str = str(position)
                 self.player_dict[(player_name, pos_str,team)] = {
                     "Fpts": float(row["fpts"]),
@@ -309,24 +313,28 @@ class MLB_GPP_Simulator:
     # Load ownership from file
     def load_ownership(self, path):
         # Read ownership into a dictionary
-        with open(path) as file:
+        with open(path, encoding="utf-8-sig") as file:
             reader = csv.DictReader(self.lower_first(file))
             for row in reader:
                 player_name = row["name"].replace("-", "#").lower()                
                 position = [pos for pos in row['pos'].split('/')]
                 team = row['team']
+                #if team == 'WSH':
+                #    team = 'WAS'
                 pos_str = str(position)
                 if (player_name,pos_str, team) in self.player_dict:
                     self.player_dict[(player_name,pos_str, team)]["Ownership"] = float(row["own%"])
 
     # Load standard deviations
     def load_boom_bust(self, path):
-        with open(path) as file:
+        with open(path, encoding="utf-8-sig") as file:
             reader = csv.DictReader(self.lower_first(file))
             for row in reader:
                 player_name = row["name"].replace("-", "#").lower()                
                 position = [pos for pos in row['pos'].split('/')]
                 team = row['team']
+                #if team == 'WSH':
+                #    team = 'WAS'
                 pos_str = str(position)
                 if (player_name,pos_str, team) in self.player_dict:
                     self.player_dict[(player_name,pos_str, team)]["StdDev"] = float(row["stddev"])
@@ -343,10 +351,12 @@ class MLB_GPP_Simulator:
                     self.player_dict[(player_name,pos,team)]["StdDev"] = self.player_dict[(player_name,pos,team)]["Fpts"]*self.default_hitter_var           
                     
     def load_team_stacks(self,path):
-        with open(path) as file:
+        with open(path, encoding="utf-8-sig") as file:
             reader = csv.DictReader(self.lower_first(file))
             for row in reader:
                 team = row["team"].replace("-", "#")
+                #if team == 'WSH':
+                #    team = 'WAS'
                 self.stacks_dict[team]= float(row["own%"])/100
                     
     def remap(self, fieldnames):
@@ -581,6 +591,8 @@ class MLB_GPP_Simulator:
             for k in self.player_dict.keys():
                 if 'Team' not in self.player_dict[k].keys():
                     print(self.player_dict[k]['Name'], ' name mismatch between projections and player ids!')
+                if self.player_dict[k]['ID']==0:
+                    print(self.player_dict[k]['Name'], ' name mismatch between projections and player ids!')
                 ids.append(self.player_dict[k]['ID'])
                 ownership.append(self.player_dict[k]['Ownership'])
                 salaries.append(self.player_dict[k]['Salary'])
@@ -621,7 +633,7 @@ class MLB_GPP_Simulator:
             for i in range(diff):
                 lu_tuple = (i, ids, in_lineup, pos_matrix,ownership, salary_floor, salary_ceiling, optimal_score, salaries, projections,max_pct_off_optimal, teams, stacks[i])
                 problems.append(lu_tuple)
-            #print(problems)
+            #print(problems[0])
             start_time = time.time()
             with mp.Pool() as pool:
                 output = pool.starmap(self.generate_lineups, problems)
