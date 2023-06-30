@@ -443,7 +443,6 @@ class MLB_GPP_Simulator:
                     i += 1                
         #print(self.field_lineups)
 
-# Here's the first part of the refactored `generate_lineups` function, which includes the no stack part:
     @staticmethod
     def generate_lineups(
         lu_num,
@@ -458,20 +457,20 @@ class MLB_GPP_Simulator:
         projections,
         max_pct_off_optimal,
         teams,
-        opponents,  # NEW: add opponents as a parameter
+        opponents,
         team_stack,
         stack_len,
-        overlap_limit  # NEW: add overlap_limit as a parameter
+        overlap_limit
     ):
         np.random.seed(lu_num)
         lus = {}
+        max_attempts = 1000
 
         if sum(in_lineup) != 0:
             in_lineup.fill(0)
 
         reject = True
 
-        # NEW: Pre-compute eligible players for each position
         eligible_players = {i: np.where(pos_matrix[:, i] > 0)[0] for i in range(pos_matrix.shape[1])}
 
         while reject:
@@ -484,21 +483,14 @@ class MLB_GPP_Simulator:
 
                 lineup = []
                 hitter_teams = []
-                opposing_pitcher_teams = []  # NEW: a list to store the teams of the opposing pitchers
+                opposing_pitcher_teams = []
 
-                k=0
+                k = 0
                 for pos in pos_matrix.T:
-                    # NEW: Use pre-computed eligible players for the current position
                     valid_players = eligible_players[k]
-
-                    # NEW: Exclude players already in lineup
                     valid_players = valid_players[in_lineup[valid_players] == 0]
-
-                    # NEW: If we are selecting a pitcher (k < 2) and overlap_limit is 0, we should make sure that we are not selecting any hitters from the opposing team of the selected pitcher
                     if k < 2 and overlap_limit == 0:
                         valid_players = valid_players[~np.isin(teams[valid_players], opposing_pitcher_teams)]
-
-                    # NEW: If no valid players, continue with the next iteration of the loop
                     if len(valid_players) == 0:
                         continue
 
@@ -506,42 +498,48 @@ class MLB_GPP_Simulator:
                     prob_list = ownership[valid_players]
                     prob_list = prob_list / prob_list.sum()
 
-                    choice = np.random.choice(a=plyr_list, p=prob_list)
-                    choice_idx = np.where(ids == choice)[0]
+                    for attempt in range(max_attempts):
+                        choice = np.random.choice(a=plyr_list, p=prob_list)
+                        choice_idx = np.where(ids == choice)[0]
 
-                    if opposing_pitcher_teams.count(opponents[choice_idx][0]) < overlap_limit:
-                        lineup.append(str(choice))
-                        in_lineup[choice_idx] = 1
+                        if opposing_pitcher_teams.count(opponents[choice_idx][0]) <= overlap_limit:
+                            lineup.append(str(choice))
+                            in_lineup[choice_idx] = 1
 
-                        salary += salaries[choice_idx]
-                        proj += projections[choice_idx]
+                            salary += salaries[choice_idx]
+                            proj += projections[choice_idx]
 
-                        if k > 1:
-                            hitter_teams.append(teams[choice_idx][0])
-                            opposing_pitcher_teams.append(opponents[choice_idx][0])
-                        k += 1
+                            if k > 1:
+                                hitter_teams.append(teams[choice_idx][0])
+                                opposing_pitcher_teams.append(opponents[choice_idx][0])
+                            k += 1
+                            break
                     else:
+                        if sum(in_lineup) != 0:
+                            in_lineup.fill(0)
+                        lineup = []
+                        hitter_teams = []
+                        opposing_pitcher_teams = []
+                        salary = 0
+                        proj = 0
+                        k = 0
                         continue
 
-                if salary >= salary_floor and salary <= salary_ceiling and proj >= (optimal_score - (max_pct_off_optimal * optimal_score)):
-                    mode = statistics.mode(hitter_teams)
-                    if hitter_teams.count(mode) <= 5:
-                        # NEW: check if the number of hitters from the opposing team of the selected pitchers does not exceed the overlap limit
-                        if sum([opposing_pitcher_teams.count(team) for team in set(opposing_pitcher_teams)]) <= overlap_limit:
-                            reject = False
+                    if salary >= salary_floor and salary <= salary_ceiling and proj >= (optimal_score - (max_pct_off_optimal * optimal_score)):
+                        mode = statistics.mode(hitter_teams)
+                        if hitter_teams.count(mode) <= 5:
+                            if all(opposing_pitcher_teams.count(team) <= overlap_limit for team in set(opposing_pitcher_teams)):
+                                reject = False
 
-                            lus[lu_num] = {
-                                "Lineup": lineup,
-                                "Wins": 0,
-                                "Top10": 0,
-                                "ROI": 0,
-                                "Cashes": 0,
-                                "Type": "generated_nostack",
-                            }
+                                lus[lu_num] = {
+                                    "Lineup": lineup,
+                                    "Wins": 0,
+                                    "Top10": 0,
+                                    "ROI": 0,
+                                    "Cashes": 0,
+                                    "Type": "generated_nostack",
+                                }
             else:
-
-
-
                 salary = 0
                 proj = 0
 
@@ -549,13 +547,14 @@ class MLB_GPP_Simulator:
                     in_lineup.fill(0)
 
                 hitter_teams = []
-                opposing_pitcher_teams = []  # NEW: a list to store the teams of the opposing pitchers
+                opposing_pitcher_teams = []
 
                 filled_pos = np.zeros(shape=pos_matrix.shape[1])
 
+
                 team_stack_len = 0
 
-                k=0
+                k = 0
 
                 stack = True
 
@@ -596,7 +595,6 @@ class MLB_GPP_Simulator:
                         if k <2:
                             valid_players = eligible_players[ix]
 
-                            # NEW: Exclude players already in lineup
                             valid_players = valid_players[in_lineup[valid_players] == 0]
 
                             plyr_list = ids[valid_players]
@@ -617,34 +615,42 @@ class MLB_GPP_Simulator:
                         elif k >1:
                             valid_players = eligible_players[ix]
 
-                            # NEW: Exclude players already in lineup and players in team stack
                             valid_players = valid_players[(in_lineup[valid_players] == 0) & (teams[valid_players] != team_stack)]
 
                             plyr_list = ids[valid_players]
                             prob_list = ownership[valid_players]
                             prob_list = prob_list / prob_list.sum()
 
-                            choice = np.random.choice(a=plyr_list, p=prob_list)
-                            choice_idx = np.where(ids == choice)[0]
+                            for attempt in range(max_attempts):
+                                choice = np.random.choice(a=plyr_list, p=prob_list)
+                                choice_idx = np.where(ids == choice)[0]
 
 
-                            if opposing_pitcher_teams.count(opponents[choice_idx][0]) < overlap_limit:
-                                in_lineup[choice_idx] = 1
-                                lineup[ix] = str(choice)
+                                if opposing_pitcher_teams.count(opponents[choice_idx][0]) <= overlap_limit:
+                                    in_lineup[choice_idx] = 1
+                                    lineup[ix] = str(choice)
 
-                                salary += salaries[choice_idx]
-                                proj += projections[choice_idx]
+                                    salary += salaries[choice_idx]
+                                    proj += projections[choice_idx]
 
-                                hitter_teams.append(teams[choice_idx][0])
-                                opposing_pitcher_teams.append(opponents[choice_idx][0])
+                                    hitter_teams.append(teams[choice_idx][0])
+                                    opposing_pitcher_teams.append(opponents[choice_idx][0])
 
-                                if teams[choice_idx][0] == team_stack:
-                                    team_stack_len += 1
+                                    if teams[choice_idx][0] == team_stack:
+                                        team_stack_len += 1
 
-                                k += 1
+                                    k += 1
+                                    break
                             else:
+                                if sum(in_lineup) != 0:
+                                    in_lineup.fill(0)
+                                lineup = []
+                                hitter_teams = []
+                                opposing_pitcher_teams = []
+                                salary = 0
+                                proj = 0
+                                k = 0
                                 continue
-
                     else:
                         k+=1
 
@@ -655,8 +661,7 @@ class MLB_GPP_Simulator:
                         if proj >= reasonable_projection:
                             mode = statistics.mode(hitter_teams)
                             if hitter_teams.count(mode) <= 5: 
-                                # NEW: check if the number of hitters from the opposing team of the selected pitchers does not exceed the overlap limit
-                                if sum([opposing_pitcher_teams.count(team) for team in set(opposing_pitcher_teams)]) <= overlap_limit:
+                                if all(opposing_pitcher_teams.count(team) <= overlap_limit for team in set(opposing_pitcher_teams)):
                                     reject = False
                                     lus[lu_num] = {
                                         "Lineup": lineup,
@@ -667,6 +672,8 @@ class MLB_GPP_Simulator:
                                         "Type": "generated_stack",
                                     }
         return lus
+
+
 
 
 
@@ -716,7 +723,7 @@ class MLB_GPP_Simulator:
             stack_usage = self.pct_field_using_stacks
             teams = np.array(teams)
             opponents = np.array(opponents)
-            overlap_limit = 9
+            overlap_limit = 1
             problems = []
             stacks = np.random.binomial(n=1,p=self.pct_field_using_stacks,size=diff)
             stack_len = np.random.choice(a=[4,5],p=[1-self.pct_5man_stacks, self.pct_5man_stacks],size=diff)
