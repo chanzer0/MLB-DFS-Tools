@@ -12,6 +12,7 @@ import statistics
 #import fuzzywuzzy
 import itertools
 import collections
+import re
 
 class MLB_GPP_Simulator:
     config = None
@@ -129,6 +130,7 @@ class MLB_GPP_Simulator:
         self.default_hitter_var = float(self.config['default_hitter_var'])
         self.default_pitcher_var = float(self.config['default_pitcher_var'])
         self.pct_5man_stacks = float(self.config['pct_5man_stacks'])
+        self.overlap_limit = float(self.config['num_hitters_vs_pitcher'])
 
     # In order to make reasonable tournament lineups, we want to be close enough to the optimal that
     # a person could realistically land on this lineup. Skeleton here is taken from base `mlb_optimizer.py`
@@ -240,10 +242,21 @@ class MLB_GPP_Simulator:
                     team = 'WAS'
                 else:
                     team = row['teamabbrev']
+                match =  re.search(pattern='(\w{2,4}@\w{2,4})', string=row['game info'])
+                opp = ''
+                match = match.groups()[0].split('@')
+                for m in match:
+                    m = m.strip()
+                    if m == 'WSH':
+                        m = 'WAS'
+                    if m != team:
+                        opp = m
+                  # adjust "opponent" to match your CSV column
                 pos_str = str(position)
                 if (player_name,pos_str, team) in self.player_dict:
                     self.player_dict[(player_name,pos_str, team)]["ID"] = str(row["id"])
                     self.player_dict[(player_name,pos_str, team)]["Team"] =  row["teamabbrev"]
+                    self.player_dict[(player_name,pos_str, team)]["Opp"] = opp
                 #else:
                 #    print(row[name_key] + ' not found in projections!')
                 self.id_name_dict[str(row["id"])] = row[name_key]
@@ -304,19 +317,27 @@ class MLB_GPP_Simulator:
                 else:
                     team = row['team']
                 pos_str = str(position)
+                # For pitchers, set Order to None
+                if row['ord'] == '-':
+                    order = None
+                else:
+                    order = int(row["ord"])
                 self.player_dict[(player_name, pos_str,team)] = {
                     "Fpts": float(row["fpts"]),
                     "Position": position,
                     "Name" : player_name,
                     "Team" : team,
-                    "Opp": '',
+                    "Opp" : '',
                     "ID": '',
                     "Salary": int(row["salary"].replace(",", "")),
                     "StdDev": 0,
                     "Ceiling": 0,
                     "Ownership": 0.1,
+                    "Order": order,  # Handle blank orders
                     "In Lineup": False
                 }
+
+
                                  
     # Load ownership from file
     def load_ownership(self, path):
@@ -333,8 +354,6 @@ class MLB_GPP_Simulator:
                 pos_str = str(position)
                 if (player_name,pos_str, team) in self.player_dict:
                     self.player_dict[(player_name,pos_str, team)]["Ownership"] = float(row["own%"])
-                    self.player_dict[(player_name,pos_str, team)]["Opp"] = row["opponent"]  # adjust "opponent" to match your CSV column
-
 
     # Load standard deviations
     def load_boom_bust(self, path):
@@ -462,116 +481,125 @@ class MLB_GPP_Simulator:
         stack_len,
         overlap_limit
     ):
+        # new random seed for each lineup (without this there is a ton of dupes)
         np.random.seed(lu_num)
         lus = {}
-        max_attempts = 1000
-
+        # make sure nobody is already showing up in a lineup
         if sum(in_lineup) != 0:
             in_lineup.fill(0)
-
         reject = True
-
-        eligible_players = {i: np.where(pos_matrix[:, i] > 0)[0] for i in range(pos_matrix.shape[1])}
-
+        if pos_matrix.shape[1] == 10:
+            num_p_on_roster = 2
+        else:
+            num_p_on_roster = 1
         while reject:
             if team_stack == '':
                 salary = 0
                 proj = 0
-
                 if sum(in_lineup) != 0:
                     in_lineup.fill(0)
-
                 lineup = []
                 hitter_teams = []
-                opposing_pitcher_teams = []
-
-                k = 0
+                pitcher_opps = []
+                hitters_opposing_pitcher = 0
+                k=0
                 for pos in pos_matrix.T:
-                    valid_players = eligible_players[k]
-                    valid_players = valid_players[in_lineup[valid_players] == 0]
-                    if k < 2 and overlap_limit == 0:
-                        valid_players = valid_players[~np.isin(teams[valid_players], opposing_pitcher_teams)]
-                    if len(valid_players) == 0:
-                        continue
-
-                    plyr_list = ids[valid_players]
-                    prob_list = ownership[valid_players]
-                    prob_list = prob_list / prob_list.sum()
-
-                    for attempt in range(max_attempts):
+                    if k <num_p_on_roster:
+                    # check for players eligible for the position and make sure they arent in a lineup, returns a list of indices of available player
+                        valid_players = np.where((pos > 0) & (in_lineup == 0))
+                        # grab names of players eligible
+                        plyr_list = ids[valid_players]
+                        # create np array of probability of being seelcted based on ownership and who is eligible at the position
+                        prob_list = ownership[valid_players]
+                        prob_list = prob_list / prob_list.sum()
                         choice = np.random.choice(a=plyr_list, p=prob_list)
                         choice_idx = np.where(ids == choice)[0]
-
-                        if opposing_pitcher_teams.count(opponents[choice_idx][0]) <= overlap_limit:
+                        lineup.append(str(choice))
+                        in_lineup[choice_idx] = 1
+                        salary += salaries[choice_idx]
+                        proj += projections[choice_idx]
+                        pitcher_opps.append(opponents[choice_idx][0])
+                    if k >=num_p_on_roster:
+                        p1_opp = pitcher_opps[0]
+                        if num_p_on_roster == 2:
+                            p2_opp = pitcher_opps[1]
+                        else:
+                            p2_opp = 'NOT_APPLICABLE'
+                        if hitters_opposing_pitcher < overlap_limit:
+                            valid_players = np.where((pos > 0) & (in_lineup == 0))
+                            # grab names of players eligible
+                            plyr_list = ids[valid_players]
+                            # create np array of probability of being seelcted based on ownership and who is eligible at the position
+                            prob_list = ownership[valid_players]
+                            prob_list = prob_list / prob_list.sum()
+                            choice = np.random.choice(a=plyr_list, p=prob_list)
+                            choice_idx = np.where(ids == choice)[0]
                             lineup.append(str(choice))
                             in_lineup[choice_idx] = 1
-
                             salary += salaries[choice_idx]
                             proj += projections[choice_idx]
-
-                            if k > 1:
-                                hitter_teams.append(teams[choice_idx][0])
-                                opposing_pitcher_teams.append(opponents[choice_idx][0])
-                            k += 1
-                            break
-                    else:
-                        if sum(in_lineup) != 0:
-                            in_lineup.fill(0)
-                        lineup = []
-                        hitter_teams = []
-                        opposing_pitcher_teams = []
-                        salary = 0
-                        proj = 0
-                        k = 0
-                        continue
-
-                    if salary >= salary_floor and salary <= salary_ceiling and proj >= (optimal_score - (max_pct_off_optimal * optimal_score)):
+                            hitter_teams.append(teams[choice_idx][0])
+                            if teams[choice_idx][0] == p1_opp:
+                                hitters_opposing_pitcher += 1
+                            if teams[choice_idx][0] == p2_opp:
+                                hitters_opposing_pitcher += 1
+                        else:
+                            valid_players = np.where((pos > 0) & (in_lineup == 0)& (teams!=p1_opp)& (teams!=p2_opp))   
+                            plyr_list = ids[valid_players]
+                            # create np array of probability of being seelcted based on ownership and who is eligible at the position
+                            prob_list = ownership[valid_players]
+                            prob_list = prob_list / prob_list.sum()
+                            choice = np.random.choice(a=plyr_list, p=prob_list)
+                            choice_idx = np.where(ids == choice)[0]
+                            lineup.append(str(choice))
+                            in_lineup[choice_idx] = 1
+                            salary += salaries[choice_idx]
+                            proj += projections[choice_idx]
+                            hitter_teams.append(teams[choice_idx][0]) 
+                            if teams[choice_idx][0] == p1_opp:
+                                hitters_opposing_pitcher += 1
+                            if teams[choice_idx][0] == p2_opp:
+                                hitters_opposing_pitcher += 1      
+                    k +=1 
+                # Must have a reasonable salary
+                if salary >= salary_floor and salary <= salary_ceiling:
+                    # Must have a reasonable projection (within 60% of optimal) **people make a lot of bad lineups
+                    reasonable_projection = optimal_score - (
+                        max_pct_off_optimal * optimal_score
+                    )
+                    if proj >= reasonable_projection:
                         mode = statistics.mode(hitter_teams)
-                        if hitter_teams.count(mode) <= 5:
-                            if all(opposing_pitcher_teams.count(team) <= overlap_limit for team in set(opposing_pitcher_teams)):
-                                reject = False
-
-                                lus[lu_num] = {
-                                    "Lineup": lineup,
-                                    "Wins": 0,
-                                    "Top10": 0,
-                                    "ROI": 0,
-                                    "Cashes": 0,
-                                    "Type": "generated_nostack",
-                                }
+                        if hitter_teams.count(mode) <= 5:                 
+                            reject = False
+                            lus[lu_num] = {
+                                "Lineup": lineup,
+                                "Wins": 0,
+                                "Top10": 0,
+                                "ROI": 0,
+                                "Cashes": 0,
+                                "Type": "generated_nostack",
+                            }
             else:
                 salary = 0
                 proj = 0
-
                 if sum(in_lineup) != 0:
                     in_lineup.fill(0)
-
                 hitter_teams = []
-                opposing_pitcher_teams = []
-
+                pitcher_opps = []
                 filled_pos = np.zeros(shape=pos_matrix.shape[1])
-
-
                 team_stack_len = 0
-
-                k = 0
-
+                k=0
                 stack = True
-
                 valid_team = np.where(teams == team_stack)[0]
                 valid_players = np.unique(valid_team[np.where(pos_matrix[valid_team,2:]>0)[0]])
-
+                hitters_opposing_pitcher = 0
                 plyr_list = ids[valid_players]
                 prob_list = ownership[valid_players]
                 prob_list = prob_list / prob_list.sum()
-
-                while stack:
+                while stack: 
                     choices = np.random.choice(a=plyr_list, p=prob_list, size=stack_len, replace=False)
-
                     lineup = np.zeros(shape=pos_matrix.shape[1]).astype(str)
-
                     plyr_stack_indices = np.where(np.in1d(ids, choices))[0]
-
                     x=0
                     for p in plyr_stack_indices:
                         if '0.0' in lineup[np.where(p>0)[0]]:
@@ -580,102 +608,105 @@ class MLB_GPP_Simulator:
                                     lineup[l] = ids[p]
                                     x+=1
                                     break
-
                     if x==stack_len:
                         in_lineup[plyr_stack_indices] =1
                         salary += sum(salaries[plyr_stack_indices])
+                        #rint(salary)
                         proj += sum(projections[plyr_stack_indices])
+                        #print(proj)
                         team_stack_len += stack_len
-
                         x=0
                         stack = False
-
                 for ix, (l,pos) in enumerate(zip(lineup,pos_matrix.T)):
+                    # get pitchers irrespective of stack
+#                    print(lu_num,ix, l, pos, k, lineup)
                     if l == '0.0':
-                        if k <2:
-                            valid_players = eligible_players[ix]
-
-                            valid_players = valid_players[in_lineup[valid_players] == 0]
-
+                        if k <num_p_on_roster:
+                            valid_players = np.where((pos > 0) & (in_lineup == 0) & (opponents!=team_stack))
+                            # grab names of players eligible
                             plyr_list = ids[valid_players]
+                            # create np array of probability of being selected based on ownership and who is eligible at the position
                             prob_list = ownership[valid_players]
                             prob_list = prob_list / prob_list.sum()
-
+                            #try:
                             choice = np.random.choice(a=plyr_list, p=prob_list)
+                            #except:
+                            #    print(k, pos)
                             choice_idx = np.where(ids == choice)[0]
-
                             in_lineup[choice_idx] = 1
                             lineup[ix] = str(choice)
-
                             salary += salaries[choice_idx]
                             proj += projections[choice_idx]
-
-                            k +=1
-
-                        elif k >1:
-                            valid_players = eligible_players[ix]
-
-                            valid_players = valid_players[(in_lineup[valid_players] == 0) & (teams[valid_players] != team_stack)]
-
-                            plyr_list = ids[valid_players]
-                            prob_list = ownership[valid_players]
-                            prob_list = prob_list / prob_list.sum()
-
-                            for attempt in range(max_attempts):
+                            pitcher_opps.append(opponents[choice_idx][0])
+                            k +=1                         
+                        elif k >=num_p_on_roster:
+                            p1_opp = pitcher_opps[0]
+                            if num_p_on_roster == 2:
+                                p2_opp = pitcher_opps[1]
+                            else:
+                                p2_opp = 'NOT_APPLICABLE'
+                            if hitters_opposing_pitcher < overlap_limit:
+                                valid_players = np.where((pos > 0) & (in_lineup == 0)& (teams!=team_stack))
+                                # grab names of players eligible
+                                plyr_list = ids[valid_players]
+                                # create np array of probability of being seelcted based on ownership and who is eligible at the position
+                                prob_list = ownership[valid_players]
+                                prob_list = prob_list / prob_list.sum()
                                 choice = np.random.choice(a=plyr_list, p=prob_list)
                                 choice_idx = np.where(ids == choice)[0]
-
-
-                                if opposing_pitcher_teams.count(opponents[choice_idx][0]) <= overlap_limit:
-                                    in_lineup[choice_idx] = 1
-                                    lineup[ix] = str(choice)
-
-                                    salary += salaries[choice_idx]
-                                    proj += projections[choice_idx]
-
-                                    hitter_teams.append(teams[choice_idx][0])
-                                    opposing_pitcher_teams.append(opponents[choice_idx][0])
-
-                                    if teams[choice_idx][0] == team_stack:
-                                        team_stack_len += 1
-
-                                    k += 1
-                                    break
+                                lineup[ix] = str(choice)
+                                in_lineup[choice_idx] = 1
+                                salary += salaries[choice_idx]
+                                proj += projections[choice_idx]
+                                hitter_teams.append(teams[choice_idx][0])
+                                if teams[choice_idx][0] == p1_opp:
+                                    hitters_opposing_pitcher += 1
+                                if teams[choice_idx][0] == p2_opp:
+                                    hitters_opposing_pitcher += 1
+                                if teams[choice_idx][0] == team_stack:
+                                    team_stack_len += 1
                             else:
-                                if sum(in_lineup) != 0:
-                                    in_lineup.fill(0)
-                                lineup = []
-                                hitter_teams = []
-                                opposing_pitcher_teams = []
-                                salary = 0
-                                proj = 0
-                                k = 0
-                                continue
+                                valid_players = np.where((pos > 0) & (in_lineup == 0)& (teams!=p1_opp)& (teams!=p2_opp)& (teams!=team_stack))   
+                                plyr_list = ids[valid_players]
+                                # create np array of probability of being seelcted based on ownership and who is eligible at the position
+                                prob_list = ownership[valid_players]
+                                prob_list = prob_list / prob_list.sum()
+                                choice = np.random.choice(a=plyr_list, p=prob_list)
+                                choice_idx = np.where(ids == choice)[0]
+                                lineup[ix] = str(choice)
+                                in_lineup[choice_idx] = 1
+                                salary += salaries[choice_idx]
+                                proj += projections[choice_idx]
+                                hitter_teams.append(teams[choice_idx][0]) 
+                                if teams[choice_idx][0] == p1_opp:
+                                    hitters_opposing_pitcher += 1
+                                if teams[choice_idx][0] == p2_opp:
+                                    hitters_opposing_pitcher += 1  
+                                if teams[choice_idx][0] == team_stack:
+                                    team_stack_len += 1                                    
+                            k +=1 
                     else:
                         k+=1
-
+                # Must have a reasonable salary
                 if team_stack_len >=stack_len:
                     if salary >= salary_floor and salary <= salary_ceiling:
-                        reasonable_projection = optimal_score -((max_pct_off_optimal*1.25) * optimal_score)
-
+                    # loosening reasonable projection constraint for team stacks
+                        reasonable_projection = optimal_score - (
+                            (max_pct_off_optimal*1.25) * optimal_score
+                        )
                         if proj >= reasonable_projection:
                             mode = statistics.mode(hitter_teams)
-                            if hitter_teams.count(mode) <= 5: 
-                                if all(opposing_pitcher_teams.count(team) <= overlap_limit for team in set(opposing_pitcher_teams)):
-                                    reject = False
-                                    lus[lu_num] = {
-                                        "Lineup": lineup,
-                                        "Wins": 0,
-                                        "Top10": 0,
-                                        "ROI": 0,
-                                        "Cashes": 0,
-                                        "Type": "generated_stack",
-                                    }
+                            if hitter_teams.count(mode) <= 5:                 
+                                reject = False
+                                lus[lu_num] = {
+                                    "Lineup": lineup,
+                                    "Wins": 0,
+                                    "Top10": 0,
+                                    "ROI": 0,
+                                    "Cashes": 0,
+                                    "Type": "generated_stack",
+                                }                
         return lus
-
-
-
-
 
     def generate_field_lineups(self):
         diff = self.field_size - len(self.field_lineups)
@@ -723,7 +754,7 @@ class MLB_GPP_Simulator:
             stack_usage = self.pct_field_using_stacks
             teams = np.array(teams)
             opponents = np.array(opponents)
-            overlap_limit = 1
+            overlap_limit = self.overlap_limit
             problems = []
             stacks = np.random.binomial(n=1,p=self.pct_field_using_stacks,size=diff)
             stack_len = np.random.choice(a=[4,5],p=[1-self.pct_5man_stacks, self.pct_5man_stacks],size=diff)
@@ -746,7 +777,6 @@ class MLB_GPP_Simulator:
                 #q += 1
             for i in range(diff):
                 lu_tuple = (i, ids, in_lineup, pos_matrix,ownership, salary_floor, salary_ceiling, optimal_score, salaries, projections,max_pct_off_optimal, teams, opponents, stacks[i], stack_len[i], overlap_limit)
-
                 problems.append(lu_tuple)
             #print(problems[0])
             #print(stacks)
@@ -786,20 +816,69 @@ class MLB_GPP_Simulator:
 
     def run_tournament_simulation(self):
         print("Running " + str(self.num_iterations) + " simulations")
-        #print(self.field_lineups)
         start_time = time.time()
         temp_fpts_dict = {}
+        
+        correlation_matrix = {
+            1: {1: 1, 2: 0.2, 3: 0.175, 4: 0.15, 5: 0.125, 6: 0.1, 7: 0.075, 8: 0.05, 9: 0.025},
+            2: {1: 0.2, 2: 1, 3: 0.2, 4: 0.175, 5: 0.15, 6: 0.125, 7: 0.1, 8: 0.075, 9: 0.05},
+            3: {1: 0.175, 2: 0.2, 3: 1, 4: 0.2, 5: 0.175, 6: 0.15, 7: 0.125, 8: 0.1, 9: 0.075},
+            4: {1: 0.15, 2: 0.175, 3: 0.2, 4: 1, 5: 0.2, 6: 0.175, 7: 0.15, 8: 0.125, 9: 0.1},
+            5: {1: 0.125, 2: 0.15, 3: 0.175, 4: 0.2, 5: 1, 6: 0.2, 7: 0.175, 8: 0.15, 9: 0.125},
+            6: {1: 0.1, 2: 0.125, 3: 0.15, 4: 0.175, 5: 0.2, 6: 1, 7: 0.2, 8: 0.175, 9: 0.15},
+            7: {1: 0.075, 2: 0.1, 3: 0.125, 4: 0.15, 5: 0.175, 6: 0.2, 7: 1, 8: 0.2, 9: 0.175},
+            8: {1: 0.05, 2: 0.075, 3: 0.1, 4: 0.125, 5: 0.15, 6: 0.175, 7: 0.2, 8: 1, 9: 0.2},
+            9: {1: 0.025, 2: 0.05, 3: 0.075, 4: 0.1, 5: 0.125, 6: 0.15, 7: 0.175, 8: 0.2, 9: 1},
+        }
+
+        
+
         for p, s in self.player_dict.items():
-            if "P" in s["Position"]:
-                #print(s["Name"])
-                temp_fpts_dict[s["ID"]] = np.random.normal(
-                s["Fpts"],
-                s["StdDev"] * self.randomness_amount / 100,
-                size=self.num_iterations,
-                )
-            else:
-                a,b = self.calc_gamma(s["Fpts"], s["StdDev"])
-                temp_fpts_dict[s["ID"]] = np.random.gamma(a,b,size=self.num_iterations)
+            correlation_adjustment = 1.0  # No adjustment by default
+
+            s["Adjusted Fpts"] = np.zeros(self.num_iterations)  # Initialize with zeros
+            temp_fpts_dict[s["ID"]] = np.zeros(self.num_iterations)  # Same for temp_fpts_dict
+
+        for i in range(self.num_iterations):  # Main iteration
+
+            for p, s in self.player_dict.items():
+                if "P" in s["Position"]:  # Pitcher
+                    s["Adjusted Fpts"][i] = np.random.normal(
+                        s["Fpts"], 
+                        s["StdDev"] * self.randomness_amount / 100,
+                    )
+
+            for p, s in self.player_dict.items():
+                if "P" not in s["Position"]:  # Batters
+                    correlation_adjustment = 1.0
+                    
+                    # Teammate adjustment
+                    # Teammate adjustment
+                    teammates = [player for player, info in self.player_dict.items() if info["Team"] == s["Team"] and "P" not in info["Position"] and player != p]
+                    if teammates:
+                        correlations = [correlation_matrix[s["Order"]][self.player_dict[teammate]["Order"]] for teammate in teammates]
+                        avg_correlation = sum(correlations) / len(correlations)  # Average of all correlations
+                        correlation_adjustment += avg_correlation  # Increase by 10% times the average correlation
+
+
+                    # Opposing pitcher adjustment
+                    opposing_pitcher = [player for player, info in self.player_dict.items() if info["Team"] == s["Opp"] and "P" in info["Position"]]
+                    if opposing_pitcher:
+                        opposing_pitcher_id = [player for player, info in self.player_dict.items() if info["Team"] == s["Opp"] and "P" in info["Position"]][0]
+                        opposing_pitcher_fpts = self.player_dict[opposing_pitcher_id]["Adjusted Fpts"][i]
+
+                        correlation_adjustment -= 0.6 * opposing_pitcher_fpts / s["Fpts"]  # New line
+
+                    a, b = self.calc_gamma(max(.1, s["Fpts"] * correlation_adjustment), s["StdDev"])
+                    s["Adjusted Fpts"][i] = np.random.gamma(a, b)
+
+                else:  # Pitchers, adjustment
+                    opposing_hitters = [player for player, info in self.player_dict.items() if info["Team"] == s["Opp"] and "P" not in info["Position"]]
+                    if opposing_hitters:
+                        opposing_hitter_fpts = [self.player_dict[hitter]["Adjusted Fpts"][i] for hitter in opposing_hitters]  # New line
+                        correlation_adjustment -= 0.1 * sum(opposing_hitter_fpts) / s["Fpts"]  # New line
+                    temp_fpts_dict[s["ID"]][i] = s["Adjusted Fpts"][i] * correlation_adjustment  # New line
+
         # generate arrays for every sim result for each player in the lineup and sum
         fpts_array = np.zeros(shape=(self.field_size, self.num_iterations))
         # converting payout structure into an np friendly format, could probably just do this in the load contest function
@@ -810,6 +889,7 @@ class MLB_GPP_Simulator:
             shape=self.field_size - len(payout_array), fill_value=-self.entry_fee
         )
         payout_array = np.concatenate((payout_array, l_array))
+
         for index, values in self.field_lineups.items():
             fpts_sim = sum([temp_fpts_dict[player] for player in values["Lineup"]])
             # store lineup fpts sum in 2d np array where index (row) corresponds to index of field_lineups and columns are the fpts from each sim
@@ -820,7 +900,6 @@ class MLB_GPP_Simulator:
         t10, t10_counts = np.unique(ranks[0:9:], return_counts=True)
         roi = payout_array[np.argsort(ranks, axis=0)].sum(axis=1)
         # summing up ach lineup, probably a way to v)ectorize this too (maybe just turning the field dict into an array too)
-        #print(self.field_lineups)
         for idx in self.field_lineups.keys():
             # Winning
             if idx in wins:
@@ -834,13 +913,13 @@ class MLB_GPP_Simulator:
                 self.field_lineups[idx]["ROI"] += roi[idx]
         end_time = time.time()
         diff = end_time - start_time
-        #print(self.field_lineups)
         print(
             str(self.num_iterations)
             + " tournament simulations finished in "
             + str(diff)
             + "seconds. Outputting."
         )
+
         # for p in self.player_dict.keys():
         #    print(p, self.player_dict[p]['ID'])
 
@@ -854,16 +933,25 @@ class MLB_GPP_Simulator:
             own_p = []
             lu_names = []
             lu_teams = []
+            hitters_vs_pitcher = 0
+            pitcher_opps = []
+            for id in x["Lineup"]:
+                for k,v in self.player_dict.items():
+                    if v["ID"] == id:  
+                        if 'P' in v["Position"]:
+                            pitcher_opps.append(v['Opp'])         
             for id in x["Lineup"]:
                 for k,v in self.player_dict.items():
                     if v["ID"] == id:
                         salary += v["Salary"]
                         fpts_p += v["Fpts"]
                         ceil_p += v["Ceiling"]
-                        own_p.append(v["Ownership"])
+                        own_p.append(v["Ownership"]/100)
                         lu_names.append(v["Name"])
                         if 'P' not in v["Position"]:
                             lu_teams.append(v['Team'])
+                            if v['Team'] in pitcher_opps:
+                                hitters_vs_pitcher += 1
                         continue
             counter = collections.Counter(lu_teams)
             stacks = counter.most_common(2)
@@ -878,7 +966,7 @@ class MLB_GPP_Simulator:
                         x["ROI"] / self.entry_fee / self.num_iterations * 100, 2
                     )
                     roi_round = round(x["ROI"] / self.num_iterations, 2)
-                    lineup_str = "{} ({}),{} ({}),{} ({}),{} ({}),{} ({}),{} ({}),{} ({}),{} ({}),{} ({}),{} ({}),{},{},${},{}%,{}%,{}%,{},${},{},{},{}".format(
+                    lineup_str = "{} ({}),{} ({}),{} ({}),{} ({}),{} ({}),{} ({}),{} ({}),{} ({}),{} ({}),{} ({}),{},{},${},{}%,{}%,{}%,{},${},{},{},{},{}".format(
                         lu_names[0].replace("#", "-"),
                         x["Lineup"][0],
                         lu_names[1].replace("#", "-"),
@@ -909,6 +997,7 @@ class MLB_GPP_Simulator:
                         roi_round,
                         str(stacks[0][0]) + ' ' + str(stacks[0][1]),
                         str(stacks[1][0]) + ' ' + str(stacks[1][1]),
+                        hitters_vs_pitcher,
                         lu_type
                     )
                 else:
@@ -1018,7 +1107,7 @@ class MLB_GPP_Simulator:
             if self.site == "dk":
                 if self.use_contest_data:
                     f.write(
-                        "P,P,C,1B,2B,3B,SS,OF,OF,OF,Fpts Proj,Ceiling,Salary,Win %,Top 10%,ROI%,Proj. Own. Product, Avg. Return,Stack1 Type, Stack2 Type, Lineup Type\n"
+                        "P,P,C,1B,2B,3B,SS,OF,OF,OF,Fpts Proj,Ceiling,Salary,Win %,Top 10%,ROI%,Proj. Own. Product, Avg. Return,Stack1 Type, Stack2 Type, Num Opp Hitters, Lineup Type\n"
                     )
                 else:
                     f.write(
