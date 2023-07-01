@@ -115,6 +115,8 @@ The structure for the config is as follows:
     "pct_field_using_stacks" : 0.75  // this sets 75% of the field to use stacking -- the higher this number is the more complex the problem becomes and the longer it takes lineups to be generated.,
     "default_hitter_var" : 0.5, // factor to mutliply a player's projection by if the stddev of their projection is not provided or found
     "default_pitcher_var" : 0.3 // factor to mutliply a hitter's projection by if the stddev of their projection is not provided or found
+    "pct_5man_stacks" : 0.65, // what proportion of generated stacks should be 5 man vs 4 man.
+    "num_hitters_vs_pitcher" : 0 // how many hitters to allow vs pitchers (does not affect the constraint that a pitcher cannot be chosen against a team stack)
 
 }
 ```
