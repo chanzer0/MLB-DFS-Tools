@@ -1098,7 +1098,7 @@ class MLB_GPP_Simulator:
                         unique_players[player]["ROI"] = (
                             unique_players[player]["ROI"] + val["ROI"]
                         )
-        
+
             for player, data in unique_players.items():
                 field_p = round(data["In"] / self.field_size * 100, 2)
                 win_p = round(data["Wins"] / self.num_iterations * 100, 2)
