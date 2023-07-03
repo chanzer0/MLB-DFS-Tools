@@ -814,6 +814,9 @@ class MLB_GPP_Simulator:
         beta = sd ** 2 / mean
         return alpha,beta
 
+
+
+
     def run_tournament_simulation(self):
         print("Running " + str(self.num_iterations) + " simulations")
         start_time = time.time()
@@ -852,13 +855,13 @@ class MLB_GPP_Simulator:
                 if "P" not in s["Position"]:  # Batters
                     correlation_adjustment = 1.0
                     
-                    # Teammate adjustment
+
                     # Teammate adjustment
                     teammates = [player for player, info in self.player_dict.items() if info["Team"] == s["Team"] and "P" not in info["Position"] and player != p]
                     if teammates:
                         correlations = [correlation_matrix[s["Order"]][self.player_dict[teammate]["Order"]] for teammate in teammates]
                         avg_correlation = sum(correlations) / len(correlations)  # Average of all correlations
-                        correlation_adjustment += avg_correlation  # Increase by 10% times the average correlation
+                        correlation_adjustment += avg_correlation  
 
 
                     # Opposing pitcher adjustment
@@ -866,8 +869,11 @@ class MLB_GPP_Simulator:
                     if opposing_pitcher:
                         opposing_pitcher_id = [player for player, info in self.player_dict.items() if info["Team"] == s["Opp"] and "P" in info["Position"]][0]
                         opposing_pitcher_fpts = self.player_dict[opposing_pitcher_id]["Adjusted Fpts"][i]
+                        
 
-                        correlation_adjustment -= 0.6 * opposing_pitcher_fpts / s["Fpts"]  # New line
+                        # no idea what this value should actually be re: 0.6
+
+                        correlation_adjustment -= 0.6 * opposing_pitcher_fpts / s["Fpts"] 
 
                     a, b = self.calc_gamma(max(.1, s["Fpts"] * correlation_adjustment), s["StdDev"])
                     s["Adjusted Fpts"][i] = np.random.gamma(a, b)
@@ -875,9 +881,9 @@ class MLB_GPP_Simulator:
                 else:  # Pitchers, adjustment
                     opposing_hitters = [player for player, info in self.player_dict.items() if info["Team"] == s["Opp"] and "P" not in info["Position"]]
                     if opposing_hitters:
-                        opposing_hitter_fpts = [self.player_dict[hitter]["Adjusted Fpts"][i] for hitter in opposing_hitters]  # New line
-                        correlation_adjustment -= 0.1 * sum(opposing_hitter_fpts) / s["Fpts"]  # New line
-                    temp_fpts_dict[s["ID"]][i] = s["Adjusted Fpts"][i] * correlation_adjustment  # New line
+                        opposing_hitter_fpts = [self.player_dict[hitter]["Adjusted Fpts"][i] for hitter in opposing_hitters]  
+                        correlation_adjustment -= 0.1 * sum(opposing_hitter_fpts) / s["Fpts"]  
+                    temp_fpts_dict[s["ID"]][i] = s["Adjusted Fpts"][i] * correlation_adjustment  
 
         # generate arrays for every sim result for each player in the lineup and sum
         fpts_array = np.zeros(shape=(self.field_size, self.num_iterations))
