@@ -1076,7 +1076,7 @@ class MLB_GPP_Simulator:
             ),
         )
         with open(out_path, "w") as f:
-            f.write("Player,Win%,Top10%,Sim. Own%,Proj. Own%,Avg. Return\n")
+            f.write("Player,Position,Team,Win%,Top10%,Sim. Own%,Proj. Own%,Avg. Return\n")
             unique_players = {}
             for val in self.field_lineups.values():
                 for player in val["Lineup"]:
@@ -1108,10 +1108,14 @@ class MLB_GPP_Simulator:
                     if player == v["ID"]:
                         proj_own = v["Ownership"]
                         p_name = v["Name"]
+                        position = "/".join(v.get("Position"))  # add position, join them with '/'
+                        team = v.get("Team")  # add team
                         break
                 f.write(
-                    "{},{}%,{}%,{}%,{}%,${}\n".format(
+                    "{},{},{},{}%,{}%,{}%,{}%,${}\n".format(
                         p_name.replace("#","-"),
+                        position,
+                        team,
                         win_p,
                         top10_p,
                         field_p,
