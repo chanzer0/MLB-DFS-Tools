@@ -825,95 +825,96 @@ class MLB_GPP_Simulator:
         return alpha,beta
 
 
+    def run_simulation_for_team(self, team_id, team, pitcher_samples_dict, correlation_matrix, pitcher_hitter_correlation, num_iterations):
+        hitters_tuple_keys = [player for player in team if 'P' not in player['Position']]  
+        pitcher_tuple_key = [player for player in team if 'P' in player['Position']][0]  
+
+        hitters_fpts = np.array([hitter['Fpts'] for hitter in hitters_tuple_keys])
+        hitters_stddev = np.array([hitter['StdDev'] for hitter in hitters_tuple_keys])
+        pitcher_fpts = pitcher_tuple_key['Fpts']
+        pitcher_stddev = pitcher_tuple_key['StdDev']
+
+        size = num_iterations
+
+        # check if P has been simmed
+        if pitcher_tuple_key['ID'] not in pitcher_samples_dict:
+            pitcher_samples = np.random.normal(loc=pitcher_fpts, scale=pitcher_stddev, size=size)
+            pitcher_samples_dict[pitcher_tuple_key['ID']] = pitcher_samples
+        else:
+            pitcher_samples = pitcher_samples_dict[pitcher_tuple_key['ID']]
+
+        # find opp P
+        opposing_pitcher_id = None
+        for player in team:
+            if player['Opp'] in self.teams_dict:
+                opposing_pitcher_id = next((p['ID'] for p in self.teams_dict[player['Opp']] if 'P' in p['Position']), None)
+                break
+
+        # if opp P has not been simmed, sim it
+        if opposing_pitcher_id is not None and opposing_pitcher_id not in pitcher_samples_dict:
+            opposing_pitcher = next((p for p in team if p['ID'] == opposing_pitcher_id), None)
+            if opposing_pitcher is not None:
+                opposing_pitcher_fpts = opposing_pitcher['Fpts']
+                opposing_pitcher_stddev = opposing_pitcher['StdDev']
+                opposing_pitcher_samples = np.random.normal(loc=opposing_pitcher_fpts, scale=opposing_pitcher_stddev, size=size)
+                pitcher_samples_dict[opposing_pitcher_id] = opposing_pitcher_samples
+
+        
+        if opposing_pitcher_id is not None:
+            hitters_fpts = hitters_fpts * (1 + pitcher_hitter_correlation)
+
+        # sim hitters
+        hitters_samples = [np.random.gamma(*self.calc_gamma(fpts, stddev), size=size) for fpts, stddev in zip(hitters_fpts, hitters_stddev)]
+
+        
+        hitters_marginals = [GammaUnivariate().fit(samples) for samples in hitters_samples]
+        pitcher_marginal = GaussianUnivariate().fit(pitcher_samples)
+
+        copula = GaussianMultivariate()
+        copula.univariates = hitters_marginals + [pitcher_marginal]
+        copula.covariance = correlation_matrix
 
 
+        marginals_df = pd.DataFrame(hitters_samples + [pitcher_samples]).T
 
+        copula.fit(marginals_df)
+
+        correlated_samples = copula.sample(size)
+
+        temp_fpts_dict = {}
+        for i, hitter in enumerate(hitters_tuple_keys):
+            temp_fpts_dict[hitter['ID']] = correlated_samples[i] 
+
+        temp_fpts_dict[pitcher_tuple_key['ID']] = correlated_samples.iloc[:, -1]
+
+        return temp_fpts_dict
 
     def run_tournament_simulation(self):
         print("Running " + str(self.num_iterations) + " simulations")
 
         start_time = time.time()
         temp_fpts_dict = {}
-        pitcher_samples_dict = {}  # To keep track of already processed pitchers
+        pitcher_samples_dict = {}  # keep track of already simmed pitchers
         pitcher_hitter_correlation = -0.4
         size = self.num_iterations
         correlation_matrix = np.array([
-                [1, 0.2, 0.175, 0.15, 0.125, 0.1, 0.075, 0.05, 0.025],
-                [0.2, 1, 0.2, 0.175, 0.15, 0.125, 0.1, 0.075, 0.05],
-                [0.175, 0.2, 1, 0.2, 0.175, 0.15, 0.125, 0.1, 0.075],
-                [0.15, 0.175, 0.2, 1, 0.2, 0.175, 0.15, 0.125, 0.1],
-                [0.125, 0.15, 0.175, 0.2, 1, 0.2, 0.175, 0.15, 0.125],
-                [0.1, 0.125, 0.15, 0.175, 0.2, 1, 0.2, 0.175, 0.15],
-                [0.075, 0.1, 0.125, 0.15, 0.175, 0.2, 1, 0.2, 0.175],
-                [0.05, 0.075, 0.1, 0.125, 0.15, 0.175, 0.2, 1, 0.2],
-                [0.025, 0.05, 0.075, 0.1, 0.125, 0.15, 0.175, 0.2, 1]
-            ])
+            [1, 0.2, 0.175, 0.15, 0.125, 0.1, 0.075, 0.05, 0.025],
+            [0.2, 1, 0.2, 0.175, 0.15, 0.125, 0.1, 0.075, 0.05],
+            [0.175, 0.2, 1, 0.2, 0.175, 0.15, 0.125, 0.1, 0.075],
+            [0.15, 0.175, 0.2, 1, 0.2, 0.175, 0.15, 0.125, 0.1],
+            [0.125, 0.15, 0.175, 0.2, 1, 0.2, 0.175, 0.15, 0.125],
+            [0.1, 0.125, 0.15, 0.175, 0.2, 1, 0.2, 0.175, 0.15],
+            [0.075, 0.1, 0.125, 0.15, 0.175, 0.2, 1, 0.2, 0.175],
+            [0.05, 0.075, 0.1, 0.125, 0.15, 0.175, 0.2, 1, 0.2],
+            [0.025, 0.05, 0.075, 0.1, 0.125, 0.15, 0.175, 0.2, 1]
+        ])
 
-        for team_id, team in tqdm(self.teams_dict.items(), desc="Simulating teams"):
-            hitters_tuple_keys = [player for player in team if 'P' not in player['Position']]  # Hitters
-            pitcher_tuple_key = [player for player in team if 'P' in player['Position']][0]  # Pitcher
-
-            hitters_fpts = np.array([hitter['Fpts'] for hitter in hitters_tuple_keys])
-            hitters_stddev = np.array([hitter['StdDev'] for hitter in hitters_tuple_keys])
-            pitcher_fpts = pitcher_tuple_key['Fpts']
-            pitcher_stddev = pitcher_tuple_key['StdDev']
-
-            # Check if pitcher has been processed already
-            if pitcher_tuple_key['ID'] not in pitcher_samples_dict:
-                pitcher_samples = np.random.normal(loc=pitcher_fpts, scale=pitcher_stddev, size=size)
-                pitcher_samples_dict[pitcher_tuple_key['ID']] = pitcher_samples
-            else:
-                pitcher_samples = pitcher_samples_dict[pitcher_tuple_key['ID']]
-
-            # Find the opposing pitcher
-            opposing_pitcher_id = None
-            for player in team:
-                if player['Opp'] in self.teams_dict:
-                    opposing_pitcher_id = next((p['ID'] for p in self.teams_dict[player['Opp']] if 'P' in p['Position']), None)
-                    break
-
-            # If the opposing pitcher hasn't been processed, generate samples for them
-            if opposing_pitcher_id is not None and opposing_pitcher_id not in pitcher_samples_dict:
-                opposing_pitcher = next((p for p in team if p['ID'] == opposing_pitcher_id), None)
-                if opposing_pitcher is not None:
-                    opposing_pitcher_fpts = opposing_pitcher['Fpts']
-                    opposing_pitcher_stddev = opposing_pitcher['StdDev']
-                    opposing_pitcher_samples = np.random.normal(loc=opposing_pitcher_fpts, scale=opposing_pitcher_stddev, size=size)
-                    pitcher_samples_dict[opposing_pitcher_id] = opposing_pitcher_samples
-
-            # Now, if the opposing pitcher has been processed, adjust hitters' standard deviations
-            if opposing_pitcher_id is not None:
-                hitters_stddev = hitters_stddev * (1 + pitcher_hitter_correlation)
-
-            # Generate samples for hitters
-            hitters_samples = [np.random.gamma(*self.calc_gamma(fpts, stddev), size=size) for fpts, stddev in zip(hitters_fpts, hitters_stddev)]
-
-            # Create marginals
-            hitters_marginals = [GammaUnivariate().fit(samples) for samples in hitters_samples]
-            pitcher_marginal = GaussianUnivariate().fit(pitcher_samples)
-
-            # Create and fit Gaussian Copula model
-            copula = GaussianMultivariate()
-            copula.univariates = hitters_marginals + [pitcher_marginal]
-            copula.covariance = correlation_matrix
-
-            # Create DataFrame for the marginals
-            marginals_df = pd.DataFrame(hitters_samples + [pitcher_samples]).T
-
-            copula.fit(marginals_df)
-
-            # Sample from the fitted copula
-            correlated_samples = copula.sample(size)
-
-            for i, hitter in enumerate(hitters_tuple_keys):
-                temp_fpts_dict[hitter['ID']] = correlated_samples[i]  # Assuming 'id' is a unique identifier
-
-            temp_fpts_dict[pitcher_tuple_key['ID']] = correlated_samples.iloc[:, -1]
-
-            # print(temp_fpts_dict)
-                        
-
-
+        with mp.Pool() as pool:
+            team_simulation_params = [(team_id, team, pitcher_samples_dict, correlation_matrix, pitcher_hitter_correlation, size) for team_id, team in self.teams_dict.items()]
+            results = pool.starmap(self.run_simulation_for_team, team_simulation_params)
+        
+        for res in results:
+            temp_fpts_dict.update(res)
 
         # generate arrays for every sim result for each player in the lineup and sum
         fpts_array = np.zeros(shape=(self.field_size, self.num_iterations))
@@ -921,9 +922,7 @@ class MLB_GPP_Simulator:
         payout_array = np.array(list(self.payout_structure.values()))
         # subtract entry fee
         payout_array = payout_array - self.entry_fee
-        l_array = np.full(
-            shape=self.field_size - len(payout_array), fill_value=-self.entry_fee
-        )
+        l_array = np.full(shape=self.field_size - len(payout_array), fill_value=-self.entry_fee)
         payout_array = np.concatenate((payout_array, l_array))
         for index, values in self.field_lineups.items():
             fpts_sim = sum([temp_fpts_dict[player] for player in values["Lineup"]])
@@ -935,7 +934,6 @@ class MLB_GPP_Simulator:
         t10, t10_counts = np.unique(ranks[0:9:], return_counts=True)
         roi = payout_array[np.argsort(ranks, axis=0)].sum(axis=1)
         # summing up ach lineup, probably a way to v)ectorize this too (maybe just turning the field dict into an array too)
-        #print(self.field_lineups)
         for idx in self.field_lineups.keys():
             # Winning
             if idx in wins:
@@ -945,19 +943,10 @@ class MLB_GPP_Simulator:
                 self.field_lineups[idx]["Top10"] += t10_counts[np.where(t10 == idx)][0]
             # can't figure out how to get roi for each lineup index without iterating and iterating is slow
             if self.use_contest_data:
-                #    self.field_lineups[idx]['ROI'] -= (loss_counts[np.where(losses==idx)][0])*self.entry_fee
                 self.field_lineups[idx]["ROI"] += roi[idx]
         end_time = time.time()
         diff = end_time - start_time
-        #print(self.field_lineups)
-        print(
-            str(self.num_iterations)
-            + " tournament simulations finished in "
-            + str(diff)
-            + "seconds. Outputting."
-        )
-        # for p in self.player_dict.keys():
-        #    print(p, self.player_dict[p]['ID'])
+        print(str(self.num_iterations) + " tournament simulations finished in " + str(diff) + "seconds. Outputting.")
 
 
     def output(self):
