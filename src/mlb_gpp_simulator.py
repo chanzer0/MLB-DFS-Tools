@@ -13,6 +13,13 @@ import statistics
 import itertools
 import collections
 import re
+from copulas.multivariate import GaussianMultivariate
+from copulas.univariate import GammaUnivariate, GaussianUnivariate
+import warnings
+from tqdm import tqdm
+warnings.filterwarnings("ignore", category=RuntimeWarning)
+
+
 
 class MLB_GPP_Simulator:
     config = None
@@ -301,6 +308,8 @@ class MLB_GPP_Simulator:
 
     # Load projections from file
     def load_projections(self, path):
+        self.teams_dict = collections.defaultdict(list)  # Initialize teams_dict
+
         # Read projections into a dictionary
         with open(path, encoding="utf-8-sig") as file:
             reader = csv.DictReader(self.lower_first(file))
@@ -310,19 +319,17 @@ class MLB_GPP_Simulator:
                     continue
                 if 'P' in row['pos']:
                     row['pos'] = 'P'
-                # some players have 2 positions - will be listed like 'PG/SF' or 'PF/C'
                 position = [pos for pos in row['pos'].split('/')]
                 if row['team'] == 'WSH':
                     team = 'WAS'
                 else:
                     team = row['team']
                 pos_str = str(position)
-                # For pitchers, set Order to None
                 if row['ord'] == '-':
                     order = None
                 else:
                     order = int(row["ord"])
-                self.player_dict[(player_name, pos_str,team)] = {
+                player_data = {
                     "Fpts": float(row["fpts"]),
                     "Position": position,
                     "Name" : player_name,
@@ -336,6 +343,9 @@ class MLB_GPP_Simulator:
                     "Order": order,  # Handle blank orders
                     "In Lineup": False
                 }
+                self.player_dict[(player_name, pos_str,team)] = player_data
+                self.teams_dict[team].append(player_data)  # Add player data to their respective team
+
 
 
                                  
@@ -817,73 +827,93 @@ class MLB_GPP_Simulator:
 
 
 
+
+
     def run_tournament_simulation(self):
         print("Running " + str(self.num_iterations) + " simulations")
+
         start_time = time.time()
         temp_fpts_dict = {}
-        
-        correlation_matrix = {
-            1: {1: 1, 2: 0.2, 3: 0.175, 4: 0.15, 5: 0.125, 6: 0.1, 7: 0.075, 8: 0.05, 9: 0.025},
-            2: {1: 0.2, 2: 1, 3: 0.2, 4: 0.175, 5: 0.15, 6: 0.125, 7: 0.1, 8: 0.075, 9: 0.05},
-            3: {1: 0.175, 2: 0.2, 3: 1, 4: 0.2, 5: 0.175, 6: 0.15, 7: 0.125, 8: 0.1, 9: 0.075},
-            4: {1: 0.15, 2: 0.175, 3: 0.2, 4: 1, 5: 0.2, 6: 0.175, 7: 0.15, 8: 0.125, 9: 0.1},
-            5: {1: 0.125, 2: 0.15, 3: 0.175, 4: 0.2, 5: 1, 6: 0.2, 7: 0.175, 8: 0.15, 9: 0.125},
-            6: {1: 0.1, 2: 0.125, 3: 0.15, 4: 0.175, 5: 0.2, 6: 1, 7: 0.2, 8: 0.175, 9: 0.15},
-            7: {1: 0.075, 2: 0.1, 3: 0.125, 4: 0.15, 5: 0.175, 6: 0.2, 7: 1, 8: 0.2, 9: 0.175},
-            8: {1: 0.05, 2: 0.075, 3: 0.1, 4: 0.125, 5: 0.15, 6: 0.175, 7: 0.2, 8: 1, 9: 0.2},
-            9: {1: 0.025, 2: 0.05, 3: 0.075, 4: 0.1, 5: 0.125, 6: 0.15, 7: 0.175, 8: 0.2, 9: 1},
-        }
+        pitcher_samples_dict = {}  # To keep track of already processed pitchers
+        pitcher_hitter_correlation = -0.4
+        size = self.num_iterations
+        correlation_matrix = np.array([
+                [1, 0.2, 0.175, 0.15, 0.125, 0.1, 0.075, 0.05, 0.025],
+                [0.2, 1, 0.2, 0.175, 0.15, 0.125, 0.1, 0.075, 0.05],
+                [0.175, 0.2, 1, 0.2, 0.175, 0.15, 0.125, 0.1, 0.075],
+                [0.15, 0.175, 0.2, 1, 0.2, 0.175, 0.15, 0.125, 0.1],
+                [0.125, 0.15, 0.175, 0.2, 1, 0.2, 0.175, 0.15, 0.125],
+                [0.1, 0.125, 0.15, 0.175, 0.2, 1, 0.2, 0.175, 0.15],
+                [0.075, 0.1, 0.125, 0.15, 0.175, 0.2, 1, 0.2, 0.175],
+                [0.05, 0.075, 0.1, 0.125, 0.15, 0.175, 0.2, 1, 0.2],
+                [0.025, 0.05, 0.075, 0.1, 0.125, 0.15, 0.175, 0.2, 1]
+            ])
 
-        
+        for team_id, team in tqdm(self.teams_dict.items(), desc="Simulating teams"):
+            hitters_tuple_keys = [player for player in team if 'P' not in player['Position']]  # Hitters
+            pitcher_tuple_key = [player for player in team if 'P' in player['Position']][0]  # Pitcher
 
-        for p, s in self.player_dict.items():
-            correlation_adjustment = 1.0  # No adjustment by default
+            hitters_fpts = np.array([hitter['Fpts'] for hitter in hitters_tuple_keys])
+            hitters_stddev = np.array([hitter['StdDev'] for hitter in hitters_tuple_keys])
+            pitcher_fpts = pitcher_tuple_key['Fpts']
+            pitcher_stddev = pitcher_tuple_key['StdDev']
 
-            s["Adjusted Fpts"] = np.zeros(self.num_iterations)  # Initialize with zeros
-            temp_fpts_dict[s["ID"]] = np.zeros(self.num_iterations)  # Same for temp_fpts_dict
+            # Check if pitcher has been processed already
+            if pitcher_tuple_key['ID'] not in pitcher_samples_dict:
+                pitcher_samples = np.random.normal(loc=pitcher_fpts, scale=pitcher_stddev, size=size)
+                pitcher_samples_dict[pitcher_tuple_key['ID']] = pitcher_samples
+            else:
+                pitcher_samples = pitcher_samples_dict[pitcher_tuple_key['ID']]
 
-        for i in range(self.num_iterations):  # Main iteration
+            # Find the opposing pitcher
+            opposing_pitcher_id = None
+            for player in team:
+                if player['Opp'] in self.teams_dict:
+                    opposing_pitcher_id = next((p['ID'] for p in self.teams_dict[player['Opp']] if 'P' in p['Position']), None)
+                    break
 
-            for p, s in self.player_dict.items():
-                if "P" in s["Position"]:  # Pitcher
-                    s["Adjusted Fpts"][i] = np.random.normal(
-                        s["Fpts"], 
-                        s["StdDev"] * self.randomness_amount / 100,
-                    )
+            # If the opposing pitcher hasn't been processed, generate samples for them
+            if opposing_pitcher_id is not None and opposing_pitcher_id not in pitcher_samples_dict:
+                opposing_pitcher = next((p for p in team if p['ID'] == opposing_pitcher_id), None)
+                if opposing_pitcher is not None:
+                    opposing_pitcher_fpts = opposing_pitcher['Fpts']
+                    opposing_pitcher_stddev = opposing_pitcher['StdDev']
+                    opposing_pitcher_samples = np.random.normal(loc=opposing_pitcher_fpts, scale=opposing_pitcher_stddev, size=size)
+                    pitcher_samples_dict[opposing_pitcher_id] = opposing_pitcher_samples
 
-            for p, s in self.player_dict.items():
-                if "P" not in s["Position"]:  # Batters
-                    correlation_adjustment = 1.0
-                    
+            # Now, if the opposing pitcher has been processed, adjust hitters' standard deviations
+            if opposing_pitcher_id is not None:
+                hitters_stddev = hitters_stddev * (1 + pitcher_hitter_correlation)
 
-                    # Teammate adjustment
-                    teammates = [player for player, info in self.player_dict.items() if info["Team"] == s["Team"] and "P" not in info["Position"] and player != p]
-                    if teammates:
-                        correlations = [correlation_matrix[s["Order"]][self.player_dict[teammate]["Order"]] for teammate in teammates]
-                        avg_correlation = sum(correlations) / len(correlations)  # Average of all correlations
-                        correlation_adjustment += avg_correlation  
+            # Generate samples for hitters
+            hitters_samples = [np.random.gamma(*self.calc_gamma(fpts, stddev), size=size) for fpts, stddev in zip(hitters_fpts, hitters_stddev)]
 
+            # Create marginals
+            hitters_marginals = [GammaUnivariate().fit(samples) for samples in hitters_samples]
+            pitcher_marginal = GaussianUnivariate().fit(pitcher_samples)
 
-                    # Opposing pitcher adjustment
-                    opposing_pitcher = [player for player, info in self.player_dict.items() if info["Team"] == s["Opp"] and "P" in info["Position"]]
-                    if opposing_pitcher:
-                        opposing_pitcher_id = [player for player, info in self.player_dict.items() if info["Team"] == s["Opp"] and "P" in info["Position"]][0]
-                        opposing_pitcher_fpts = self.player_dict[opposing_pitcher_id]["Adjusted Fpts"][i]
+            # Create and fit Gaussian Copula model
+            copula = GaussianMultivariate()
+            copula.univariates = hitters_marginals + [pitcher_marginal]
+            copula.covariance = correlation_matrix
+
+            # Create DataFrame for the marginals
+            marginals_df = pd.DataFrame(hitters_samples + [pitcher_samples]).T
+
+            copula.fit(marginals_df)
+
+            # Sample from the fitted copula
+            correlated_samples = copula.sample(size)
+
+            for i, hitter in enumerate(hitters_tuple_keys):
+                temp_fpts_dict[hitter['ID']] = correlated_samples[i]  # Assuming 'id' is a unique identifier
+
+            temp_fpts_dict[pitcher_tuple_key['ID']] = correlated_samples.iloc[:, -1]
+
+            # print(temp_fpts_dict)
                         
 
-                        # no idea what this value should actually be re: 0.6
 
-                        correlation_adjustment -= 0.6 * opposing_pitcher_fpts / s["Fpts"] 
-
-                    a, b = self.calc_gamma(max(.1, s["Fpts"] * correlation_adjustment), s["StdDev"])
-                    s["Adjusted Fpts"][i] = np.random.gamma(a, b)
-
-                else:  # Pitchers, adjustment
-                    opposing_hitters = [player for player, info in self.player_dict.items() if info["Team"] == s["Opp"] and "P" not in info["Position"]]
-                    if opposing_hitters:
-                        opposing_hitter_fpts = [self.player_dict[hitter]["Adjusted Fpts"][i] for hitter in opposing_hitters]  
-                        correlation_adjustment -= 0.1 * sum(opposing_hitter_fpts) / s["Fpts"]  
-                    temp_fpts_dict[s["ID"]][i] = s["Adjusted Fpts"][i] * correlation_adjustment  
 
         # generate arrays for every sim result for each player in the lineup and sum
         fpts_array = np.zeros(shape=(self.field_size, self.num_iterations))
@@ -895,7 +925,6 @@ class MLB_GPP_Simulator:
             shape=self.field_size - len(payout_array), fill_value=-self.entry_fee
         )
         payout_array = np.concatenate((payout_array, l_array))
-
         for index, values in self.field_lineups.items():
             fpts_sim = sum([temp_fpts_dict[player] for player in values["Lineup"]])
             # store lineup fpts sum in 2d np array where index (row) corresponds to index of field_lineups and columns are the fpts from each sim
@@ -906,6 +935,7 @@ class MLB_GPP_Simulator:
         t10, t10_counts = np.unique(ranks[0:9:], return_counts=True)
         roi = payout_array[np.argsort(ranks, axis=0)].sum(axis=1)
         # summing up ach lineup, probably a way to v)ectorize this too (maybe just turning the field dict into an array too)
+        #print(self.field_lineups)
         for idx in self.field_lineups.keys():
             # Winning
             if idx in wins:
@@ -919,15 +949,16 @@ class MLB_GPP_Simulator:
                 self.field_lineups[idx]["ROI"] += roi[idx]
         end_time = time.time()
         diff = end_time - start_time
+        #print(self.field_lineups)
         print(
             str(self.num_iterations)
             + " tournament simulations finished in "
             + str(diff)
             + "seconds. Outputting."
         )
-
         # for p in self.player_dict.keys():
         #    print(p, self.player_dict[p]['ID'])
+
 
     def output(self):
         unique = {}
