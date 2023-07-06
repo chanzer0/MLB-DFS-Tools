@@ -17,12 +17,11 @@ from copulas.multivariate import GaussianMultivariate
 from copulas.univariate import GammaUnivariate, GaussianUnivariate
 import warnings
 from tqdm import tqdm
-from scipy.stats import norm, gamma
+warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 
 
-
-class MLB_GPP_Simulator:
+class MLB_Subset:
     config = None
     player_dict = {}
     field_lineups = {}
@@ -89,6 +88,22 @@ class MLB_GPP_Simulator:
             "../{}_data/{}".format(site, self.config["team_stacks_path"]),
         )        
         self.load_team_stacks(stacks_path)
+
+        top_batters_path = os.path.join(
+            os.path.dirname(__file__),
+            "../{}_data/{}".format(site, self.config["top_batters_path"]),
+        )
+        self.load_top_batters(top_batters_path)
+
+        top_pitchers_path = os.path.join(
+            os.path.dirname(__file__),
+            "../{}_data/{}".format(site, self.config["top_pitchers_path"]),
+        )
+        self.load_top_pitchers(top_pitchers_path)
+
+
+
+
         
  #       batting_order_path = os.path.join(
  #           os.path.dirname(__file__),
@@ -132,13 +147,13 @@ class MLB_GPP_Simulator:
     def load_rules(self):
         self.projection_minimum = int(self.config["projection_minimum"])
         self.randomness_amount = float(self.config["randomness"])
-        self.min_lineup_salary = int(self.config["min_lineup_salary"])
-        self.max_pct_off_optimal = float(self.config["max_pct_off_optimal"])
-        self.pct_field_using_stacks = float(self.config['pct_field_using_stacks'])
+        self.min_lineup_salary = int(self.config["builder_min_lineup_salary"])
+        self.max_pct_off_optimal = float(self.config["builder_max_pct_off_optimal"])
+        self.pct_field_using_stacks = float(self.config['builder_pct_field_using_stacks'])
         self.default_hitter_var = float(self.config['default_hitter_var'])
         self.default_pitcher_var = float(self.config['default_pitcher_var'])
-        self.pct_5man_stacks = float(self.config['pct_5man_stacks'])
-        self.overlap_limit = float(self.config['num_hitters_vs_pitcher'])
+        self.pct_5man_stacks = float(self.config['builder_pct_5man_stacks'])
+        self.overlap_limit = float(self.config['builder_num_hitters_vs_pitcher'])
 
     # In order to make reasonable tournament lineups, we want to be close enough to the optimal that
     # a person could realistically land on this lineup. Skeleton here is taken from base `mlb_optimizer.py`
@@ -342,7 +357,9 @@ class MLB_GPP_Simulator:
                     "Ceiling": 0,
                     "Ownership": 0.1,
                     "Order": order,  # Handle blank orders
-                    "In Lineup": False
+                    "In Lineup": False,
+                    "TopFp%": 0,
+                    "TopVal%": 0
                 }
                 self.player_dict[(player_name, pos_str,team)] = player_data
                 self.teams_dict[team].append(player_data)  # Add player data to their respective team
@@ -382,6 +399,61 @@ class MLB_GPP_Simulator:
                 if (player_name,pos_str, team) in self.player_dict:
                     self.player_dict[(player_name,pos_str, team)]["StdDev"] = float(row["stddev"])
                     self.player_dict[(player_name,pos_str, team)]["Ceiling"] = float(row["ceiling"])
+
+    def load_top_batters(self, path):
+        player_position_dict = {}  # This will track unique players and their positions
+
+        with open(path, encoding="utf-8-sig") as file:
+            reader = csv.DictReader(self.lower_first(file))
+            
+            for row in reader:
+                player_name = row["name"].replace("-", "#").lower()
+                position = row['pos']
+                team = 'WAS' if row['team'] == 'WSH' else row['team']
+                
+                # We use a tuple of (player_name, team) as the key for our dictionary
+                player_key = (player_name, team)
+                
+                # Check if the player is already in our dictionary
+                if player_key in player_position_dict:
+                    # If the player is already in our dictionary, append the new position
+                    # But only if it's not already in their position list
+                    if position not in player_position_dict[player_key]:
+                        player_position_dict[player_key].append(position)
+                else:
+                    # If the player is not in our dictionary, add them
+                    player_position_dict[player_key] = [position]
+                    
+                # Now we use the player_position_dict for the position part in our player_dict
+                pos_list = player_position_dict[player_key]
+                pos_str = str(pos_list)  # Convert the list to a string
+                if (player_name, pos_str, team) in self.player_dict:
+
+                    self.player_dict[(player_name, pos_str, team)]["TopFp%"] = float(row["topfp%"])
+                    self.player_dict[(player_name, pos_str, team)]["TopVal%"] = float(row["topval%"])
+
+
+
+
+
+
+    def load_top_pitchers(self, path):
+        with open(path, encoding="utf-8-sig") as file:
+            reader = csv.DictReader(self.lower_first(file))
+            for row in reader:
+                player_name = row["name"].replace("-", "#").lower()
+                # print(row)
+                pos_str = str(['P'])   # Create a list with 'P' and convert it to a string         
+                if row['team'] == 'WSH':
+                    team = 'WAS'
+                else:
+                    team = row['team']
+                if (player_name, pos_str, team) in self.player_dict:
+                    self.player_dict[(player_name, pos_str, team)]["TopFp%"] = float(row["top2%"])
+                    self.player_dict[(player_name, pos_str, team)]["TopVal%"] = float(row["top2val%"])
+
+
+
     
     def adjust_default_stdev(self):
         for (player_name,pos, team) in self.player_dict.keys():
@@ -401,7 +473,11 @@ class MLB_GPP_Simulator:
                     team = 'WAS'
                 else:
                     team = row['team']
-                self.stacks_dict[team]= float(row["own%"])/100
+                # this changes the stack selection weighting processing the generate_field_lineups
+                self.stacks_dict[team] = (float(row["top stack %"]) + float(row["top value %"])) / 2
+
+                
+    
                     
     def remap(self, fieldnames):
         return ["P","C/1B","2B","3B","SS","OF","OF","OF","UTIL"]
@@ -490,7 +566,9 @@ class MLB_GPP_Simulator:
         opponents,
         team_stack,
         stack_len,
-        overlap_limit
+        overlap_limit,
+        topfpts,
+        topval
     ):
         # new random seed for each lineup (without this there is a ton of dupes)
         np.random.seed(lu_num)
@@ -521,7 +599,7 @@ class MLB_GPP_Simulator:
                         # grab names of players eligible
                         plyr_list = ids[valid_players]
                         # create np array of probability of being seelcted based on ownership and who is eligible at the position
-                        prob_list = ownership[valid_players]
+                        prob_list = (topfpts[valid_players] + topval[valid_players]) / 2 
                         prob_list = prob_list / prob_list.sum()
                         choice = np.random.choice(a=plyr_list, p=prob_list)
                         choice_idx = np.where(ids == choice)[0]
@@ -541,7 +619,7 @@ class MLB_GPP_Simulator:
                             # grab names of players eligible
                             plyr_list = ids[valid_players]
                             # create np array of probability of being seelcted based on ownership and who is eligible at the position
-                            prob_list = ownership[valid_players]
+                            prob_list = (topfpts[valid_players] + topval[valid_players]) / 2 
                             prob_list = prob_list / prob_list.sum()
                             choice = np.random.choice(a=plyr_list, p=prob_list)
                             choice_idx = np.where(ids == choice)[0]
@@ -558,7 +636,7 @@ class MLB_GPP_Simulator:
                             valid_players = np.where((pos > 0) & (in_lineup == 0)& (teams!=p1_opp)& (teams!=p2_opp))   
                             plyr_list = ids[valid_players]
                             # create np array of probability of being seelcted based on ownership and who is eligible at the position
-                            prob_list = ownership[valid_players]
+                            prob_list = (topfpts[valid_players] + topval[valid_players]) / 2 
                             prob_list = prob_list / prob_list.sum()
                             choice = np.random.choice(a=plyr_list, p=prob_list)
                             choice_idx = np.where(ids == choice)[0]
@@ -605,7 +683,7 @@ class MLB_GPP_Simulator:
                 valid_players = np.unique(valid_team[np.where(pos_matrix[valid_team,2:]>0)[0]])
                 hitters_opposing_pitcher = 0
                 plyr_list = ids[valid_players]
-                prob_list = ownership[valid_players]
+                prob_list = (topfpts[valid_players] + topval[valid_players]) / 2 
                 prob_list = prob_list / prob_list.sum()
                 while stack: 
                     choices = np.random.choice(a=plyr_list, p=prob_list, size=stack_len, replace=False)
@@ -637,7 +715,8 @@ class MLB_GPP_Simulator:
                             # grab names of players eligible
                             plyr_list = ids[valid_players]
                             # create np array of probability of being selected based on ownership and who is eligible at the position
-                            prob_list = ownership[valid_players]
+                            prob_list = (topfpts[valid_players] + topval[valid_players]) / 2
+                            # print(prob_list) 
                             prob_list = prob_list / prob_list.sum()
                             #try:
                             choice = np.random.choice(a=plyr_list, p=prob_list)
@@ -661,7 +740,7 @@ class MLB_GPP_Simulator:
                                 # grab names of players eligible
                                 plyr_list = ids[valid_players]
                                 # create np array of probability of being seelcted based on ownership and who is eligible at the position
-                                prob_list = ownership[valid_players]
+                                prob_list = (topfpts[valid_players] + topval[valid_players]) / 2 
                                 prob_list = prob_list / prob_list.sum()
                                 choice = np.random.choice(a=plyr_list, p=prob_list)
                                 choice_idx = np.where(ids == choice)[0]
@@ -680,7 +759,7 @@ class MLB_GPP_Simulator:
                                 valid_players = np.where((pos > 0) & (in_lineup == 0)& (teams!=p1_opp)& (teams!=p2_opp)& (teams!=team_stack))   
                                 plyr_list = ids[valid_players]
                                 # create np array of probability of being seelcted based on ownership and who is eligible at the position
-                                prob_list = ownership[valid_players]
+                                prob_list = (topfpts[valid_players] + topval[valid_players]) / 2 
                                 prob_list = prob_list / prob_list.sum()
                                 choice = np.random.choice(a=plyr_list, p=prob_list)
                                 choice_idx = np.where(ids == choice)[0]
@@ -717,9 +796,15 @@ class MLB_GPP_Simulator:
                                     "Cashes": 0,
                                     "Type": "generated_stack",
                                 }                
+        
+
+        
         return lus
+    
+
 
     def generate_field_lineups(self):
+        # print(self.player_dict)
         diff = self.field_size - len(self.field_lineups)
         if diff <= 0:
             print(
@@ -736,6 +821,8 @@ class MLB_GPP_Simulator:
             positions = []
             teams = []
             opponents = []
+            topfpts = []
+            topval = []
             for k in self.player_dict.keys():
                 if 'Team' not in self.player_dict[k].keys():
                     print(self.player_dict[k]['Name'], ' name mismatch between projections and player ids!')
@@ -745,6 +832,8 @@ class MLB_GPP_Simulator:
                 projections.append(self.player_dict[k]['Fpts'])
                 teams.append(self.player_dict[k]['Team'])
                 opponents.append(self.player_dict[k]['Opp'])
+                topfpts.append(self.player_dict[k]['TopFp%'])
+                topval.append(self.player_dict[k]['TopVal%'])
                 pos_list = []
                 for pos in self.roster_construction:
                     if pos in self.player_dict[k]['Position']:
@@ -765,6 +854,8 @@ class MLB_GPP_Simulator:
             stack_usage = self.pct_field_using_stacks
             teams = np.array(teams)
             opponents = np.array(opponents)
+            topfpts = np.array(topfpts)
+            topval = np.array(topval)
             overlap_limit = self.overlap_limit
             problems = []
             stacks = np.random.binomial(n=1,p=self.pct_field_using_stacks,size=diff)
@@ -787,7 +878,7 @@ class MLB_GPP_Simulator:
                 #    print(positions[q])
                 #q += 1
             for i in range(diff):
-                lu_tuple = (i, ids, in_lineup, pos_matrix,ownership, salary_floor, salary_ceiling, optimal_score, salaries, projections,max_pct_off_optimal, teams, opponents, stacks[i], stack_len[i], overlap_limit)
+                lu_tuple = (i, ids, in_lineup, pos_matrix,ownership, salary_floor, salary_ceiling, optimal_score, salaries, projections,max_pct_off_optimal, teams, opponents, stacks[i], stack_len[i], overlap_limit, topfpts, topval)
                 problems.append(lu_tuple)
             #print(problems[0])
             #print(stacks)
@@ -802,6 +893,9 @@ class MLB_GPP_Simulator:
                 )
                 pool.close()
                 pool.join()
+
+
+
             if len(self.field_lineups) == 0:
                 new_keys = list(range(0, self.field_size))
             else:
@@ -815,436 +909,95 @@ class MLB_GPP_Simulator:
                 self.field_lineups[nk] = o[i]
                 nk += 1
             end_time = time.time()
+
             print("lineups took " + str(end_time - start_time) + " seconds")
             print(str(diff) + " field lineups successfully generated")
-            #print(self.field_lineups)
 
+                # Create DataFrame from lineups
+            # Create DataFrame from lineups
 
-    def calc_gamma(self,mean,sd):
-        alpha = (mean / sd) ** 2
-        beta = sd ** 2 / mean
-        return alpha,beta
+            lineups_data = []
+            for index, x in self.field_lineups.items():
+                lineup_row = {}
+                salary = 0
+                fpts_p = 0
+                own_p = []
+                lu_names = []
+                lu_teams = []
+                hitters_vs_pitcher = 0
+                pitcher_opps = []
+                for id in x["Lineup"]:
+                    for k,v in self.player_dict.items():
+                        if v["ID"] == id:  
+                            if 'P' in v["Position"]:
+                                pitcher_opps.append(v['Opp'])         
+                for id in x["Lineup"]:
+                    for k,v in self.player_dict.items():
+                        if v["ID"] == id:
+                            salary += v["Salary"]
+                            fpts_p += v["Fpts"]
+                            own_p.append(v["Ownership"]/100)
+                            lu_names.append(v["Name"])
+                            if 'P' not in v["Position"]:
+                                lu_teams.append(v['Team'])
+                                if v['Team'] in pitcher_opps:
+                                    hitters_vs_pitcher += 1
+                            continue
+                counter = collections.Counter(lu_teams)
+                stacks = counter.most_common(2)
+                own_p = np.prod(own_p)
+                lu_type = x["Type"]
 
-
-    def run_simulation_for_team(self, team_id, team, pitcher_samples_dict, pitcher_hitter_correlation, num_iterations):
-
-
-        # matrix is 10 x 10. FIrst 9 rows are hitters. Each row is the correlation of a lineup spot (player_dict 'Order') with the other 9 spots. 
-        # The lists are in order of the player_dict 'Order' key. 1-9 represents the 9 spots in the lineup, the last row is the pitcher and 'Order' is None.
-        # last row is pitcher from team of hitters who has a 0 correlation with the hitters on his team. 
-        correlation_matrix = np.array([
-            [1, 0.2, 0.175, 0.15, 0.125, 0.1, 0.075, 0.05, 0.025, 0],
-            [0.2, 1, 0.2, 0.175, 0.15, 0.125, 0.1, 0.075, 0.05, 0],
-            [0.175, 0.2, 1, 0.2, 0.175, 0.15, 0.125, 0.1, 0.075, 0],
-            [0.15, 0.175, 0.2, 1, 0.2, 0.175, 0.15, 0.125, 0.1, 0],
-            [0.125, 0.15, 0.175, 0.2, 1, 0.2, 0.175, 0.15, 0.125, 0],
-            [0.1, 0.125, 0.15, 0.175, 0.2, 1, 0.2, 0.175, 0.15, 0],
-            [0.075, 0.1, 0.125, 0.15, 0.175, 0.2, 1, 0.2, 0.175, 0],
-            [0.05, 0.075, 0.1, 0.125, 0.15, 0.175, 0.2, 1, 0.2, 0],
-            [0.025, 0.05, 0.075, 0.1, 0.125, 0.15, 0.175, 0.2, 1, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 1]
-        ])
-
-
-        team = sorted(team, key=lambda player: float('inf') if player['Order'] is None else player['Order'])
-        # print(team)
-        hitters_tuple_keys = [player for player in team if 'P' not in player['Position']]  
-        pitcher_tuple_key = [player for player in team if 'P' in player['Position']][0]  
-
-        hitters_fpts = np.array([hitter['Fpts'] for hitter in hitters_tuple_keys])
-        hitters_stddev = np.array([hitter['StdDev'] for hitter in hitters_tuple_keys])
-        pitcher_fpts = pitcher_tuple_key['Fpts']
-        pitcher_stddev = pitcher_tuple_key['StdDev']
-
-        size = num_iterations
-
-        # check if P has been simmed
-        if pitcher_tuple_key['ID'] not in pitcher_samples_dict:
-            pitcher_samples = np.random.normal(loc=pitcher_fpts, scale=pitcher_stddev, size=size)
-            pitcher_samples_dict[pitcher_tuple_key['ID']] = pitcher_samples
-        else:
-            pitcher_samples = pitcher_samples_dict[pitcher_tuple_key['ID']]
-
-        # find opp P
-        opposing_pitcher_id = None
-        for player in team:
-            if player['Opp'] in self.teams_dict:
-                opposing_pitcher_id = next((p['ID'] for p in self.teams_dict[player['Opp']] if 'P' in p['Position']), None)
-                break
-
-        # if opp P has not been simmed, sim it
-        if opposing_pitcher_id is not None and opposing_pitcher_id not in pitcher_samples_dict:
-            opposing_pitcher = next((p for p in team if p['ID'] == opposing_pitcher_id), None)
-            if opposing_pitcher is not None:
-                opposing_pitcher_fpts = opposing_pitcher['Fpts']
-                opposing_pitcher_stddev = opposing_pitcher['StdDev']
-                opposing_pitcher_samples = np.random.normal(loc=opposing_pitcher_fpts, scale=opposing_pitcher_stddev, size=size)
-                pitcher_samples_dict[opposing_pitcher_id] = opposing_pitcher_samples
-
-        if opposing_pitcher_id is not None:
-            hitters_fpts = hitters_fpts * (1 + pitcher_hitter_correlation)
-
-        # Preparing players for simulation
-        hitters_params = [(fpts, stddev) for fpts, stddev in zip(hitters_fpts, hitters_stddev)]
-        pitcher_params = (pitcher_fpts, pitcher_stddev)
-
-        # Cholesky decomposition
-        L = np.linalg.cholesky(correlation_matrix)
-
-        # Generate independent standard normal random variables
-        rv = np.random.normal(size=(10, num_iterations))
-
-        # Generate correlated standard normal random variables
-        correlated_normals = np.dot(L, rv)
-
-        # Convert correlated standard normal random variables to desired distributions
-        hitters_samples = [gamma.ppf(norm.cdf(n), *self.calc_gamma(*params)) for n, params in zip(correlated_normals[:-1], hitters_params)]
-        pitcher_samples = norm.ppf(norm.cdf(correlated_normals[-1]), *pitcher_params)
-
-        # Prepare to write to CSV
-        # File will be named "simulation_results.csv", will overwrite existing file
-        filename = 'simulation_results.csv'
-        with open(filename, mode='w', newline='') as file:
-            writer = csv.writer(file)
-
-            # Write header (player names)
-            player_names = [player['Name'] for player in hitters_tuple_keys] + [pitcher_tuple_key['Name']]
-            writer.writerow(player_names)
-
-            # Write each row of samples
-            for i in range(num_iterations):
-                row_samples = [hitters_samples[j][i] for j in range(len(hitters_samples))] + [pitcher_samples[i]]
-                writer.writerow(row_samples)
-
-        print(f"Simulation results have been written to {os.path.abspath(filename)}.")
-
-        temp_fpts_dict = {}
-        for i, hitter in enumerate(hitters_tuple_keys):
-            temp_fpts_dict[hitter['ID']] = hitters_samples[i]
-
-        temp_fpts_dict[pitcher_tuple_key['ID']] = pitcher_samples
-
-        return temp_fpts_dict
-
-
-    def run_tournament_simulation(self):
-        print("Running " + str(self.num_iterations) + " simulations")
-
-        start_time = time.time()
-        temp_fpts_dict = {}
-        pitcher_samples_dict = {}  # keep track of already simmed pitchers
-        pitcher_hitter_correlation = -0.2
-        size = self.num_iterations
-
-
-        # # matrix is 10 x 10. FIrst 9 rows are hitters, last row is pitcher from team of hitters who has a 0 correlation with the hitters on his team
-        # correlation_matrix = np.array([
-        #     [1, 0.2, 0.175, 0.15, 0.125, 0.1, 0.075, 0.05, 0.025, 0],
-        #     [0.2, 1, 0.2, 0.175, 0.15, 0.125, 0.1, 0.075, 0.05, 0],
-        #     [0.175, 0.2, 1, 0.2, 0.175, 0.15, 0.125, 0.1, 0.075, 0],
-        #     [0.15, 0.175, 0.2, 1, 0.2, 0.175, 0.15, 0.125, 0.1, 0],
-        #     [0.125, 0.15, 0.175, 0.2, 1, 0.2, 0.175, 0.15, 0.125, 0],
-        #     [0.1, 0.125, 0.15, 0.175, 0.2, 1, 0.2, 0.175, 0.15, 0],
-        #     [0.075, 0.1, 0.125, 0.15, 0.175, 0.2, 1, 0.2, 0.175, 0],
-        #     [0.05, 0.075, 0.1, 0.125, 0.15, 0.175, 0.2, 1, 0.2, 0],
-        #     [0.025, 0.05, 0.075, 0.1, 0.125, 0.15, 0.175, 0.2, 1, 0],
-        #     [0, 0, 0, 0, 0, 0, 0, 0, 0, 1]
-        # ])
-
-
-
-        
-
-        with mp.Pool() as pool:
-            team_simulation_params = [(team_id, team, pitcher_samples_dict, pitcher_hitter_correlation, size) for team_id, team in self.teams_dict.items()]
-            results = pool.starmap(self.run_simulation_for_team, team_simulation_params)
-        
-        for res in results:
-            temp_fpts_dict.update(res)
-
-        # generate arrays for every sim result for each player in the lineup and sum
-        fpts_array = np.zeros(shape=(self.field_size, self.num_iterations))
-        # converting payout structure into an np friendly format, could probably just do this in the load contest function
-        payout_array = np.array(list(self.payout_structure.values()))
-        # subtract entry fee
-        payout_array = payout_array - self.entry_fee
-        l_array = np.full(shape=self.field_size - len(payout_array), fill_value=-self.entry_fee)
-        payout_array = np.concatenate((payout_array, l_array))
-        for index, values in self.field_lineups.items():
-            fpts_sim = sum([temp_fpts_dict[player] for player in values["Lineup"]])
-            # store lineup fpts sum in 2d np array where index (row) corresponds to index of field_lineups and columns are the fpts from each sim
-            fpts_array[index] = fpts_sim
-        ranks = np.argsort(fpts_array, axis=0)[::-1]
-        # count wins, top 10s vectorized
-        wins, win_counts = np.unique(ranks[0, :], return_counts=True)
-        t10, t10_counts = np.unique(ranks[0:9:], return_counts=True)
-        roi = payout_array[np.argsort(ranks, axis=0)].sum(axis=1)
-        # summing up ach lineup, probably a way to v)ectorize this too (maybe just turning the field dict into an array too)
-        for idx in self.field_lineups.keys():
-            # Winning
-            if idx in wins:
-                self.field_lineups[idx]["Wins"] += win_counts[np.where(wins == idx)][0]
-            # Top 10
-            if idx in t10:
-                self.field_lineups[idx]["Top10"] += t10_counts[np.where(t10 == idx)][0]
-            # can't figure out how to get roi for each lineup index without iterating and iterating is slow
-            if self.use_contest_data:
-                self.field_lineups[idx]["ROI"] += roi[idx]
-        end_time = time.time()
-        diff = end_time - start_time
-        print(str(self.num_iterations) + " tournament simulations finished in " + str(diff) + "seconds. Outputting.")
-
-
-    def output(self):
-        unique = {}
-        for index, x in self.field_lineups.items():
-            #print(x)
-            salary = 0
-            fpts_p = 0
-            ceil_p = 0
-            own_p = []
-            lu_names = []
-            lu_teams = []
-            hitters_vs_pitcher = 0
-            pitcher_opps = []
-            for id in x["Lineup"]:
-                for k,v in self.player_dict.items():
-                    if v["ID"] == id:  
-                        if 'P' in v["Position"]:
-                            pitcher_opps.append(v['Opp'])         
-            for id in x["Lineup"]:
-                for k,v in self.player_dict.items():
-                    if v["ID"] == id:
-                        salary += v["Salary"]
-                        fpts_p += v["Fpts"]
-                        ceil_p += v["Ceiling"]
-                        own_p.append(v["Ownership"]/100)
-                        lu_names.append(v["Name"])
-                        if 'P' not in v["Position"]:
-                            lu_teams.append(v['Team'])
-                            if v['Team'] in pitcher_opps:
-                                hitters_vs_pitcher += 1
-                        continue
-            counter = collections.Counter(lu_teams)
-            stacks = counter.most_common(2)
-            own_p = np.prod(own_p)
-            win_p = round(x["Wins"] / self.num_iterations * 100, 2)
-            top10_p = round(x["Top10"] / self.num_iterations * 100, 2)
-            cash_p = round(x["Cashes"] / self.num_iterations * 100, 2)
-            lu_type = x["Type"]
-            if self.site == "dk":
-                if self.use_contest_data:
-                    roi_p = round(
-                        x["ROI"] / self.entry_fee / self.num_iterations * 100, 2
-                    )
-                    roi_round = round(x["ROI"] / self.num_iterations, 2)
-                    lineup_str = "{} ({}),{} ({}),{} ({}),{} ({}),{} ({}),{} ({}),{} ({}),{} ({}),{} ({}),{} ({}),{},{},${},{}%,{}%,{}%,{},${},{},{},{},{}".format(
-                        lu_names[0].replace("#", "-"),
-                        x["Lineup"][0],
-                        lu_names[1].replace("#", "-"),
-                        x["Lineup"][1],
-                        lu_names[2].replace("#", "-"),
-                        x["Lineup"][2],
-                        lu_names[3].replace("#", "-"),
-                        x["Lineup"][3],
-                        lu_names[4].replace("#", "-"),
-                        x["Lineup"][4],
-                        lu_names[5].replace("#", "-"),
-                        x["Lineup"][5],
-                        lu_names[6].replace("#", "-"),
-                        x["Lineup"][6],
-                        lu_names[7].replace("#", "-"),
-                        x["Lineup"][7],
-                        lu_names[8].replace("#", "-"),
-                        x["Lineup"][8],
-                        lu_names[9].replace("#", "-"),
-                        x["Lineup"][9],
-                        fpts_p,
-                        ceil_p,
-                        salary,
-                        win_p,
-                        top10_p,
-                        roi_p,
-                        own_p,
-                        roi_round,
-                        str(stacks[0][0]) + ' ' + str(stacks[0][1]),
-                        str(stacks[1][0]) + ' ' + str(stacks[1][1]),
-                        hitters_vs_pitcher,
-                        lu_type
-                    )
-                else:
-                    lineup_str = "{} ({}),{} ({}),{} ({}),{} ({}),{} ({}),{} ({}),{} ({}),{} ({}),{} ({}),{},{}%,{}%,{},{}%,{}".format(
-                        lu_names[0].replace("#", "-"),
-                        x["Lineup"][0],
-                        lu_names[1].replace("#", "-"),
-                        x["Lineup"][1],
-                        lu_names[2].replace("#", "-"),
-                        x["Lineup"][2],
-                        lu_names[3].replace("#", "-"),
-                        x["Lineup"][3],
-                        lu_names[4].replace("#", "-"),
-                        x["Lineup"][4],
-                        lu_names[5].replace("#", "-"),
-                        x["Lineup"][5],
-                        lu_names[6].replace("#", "-"),
-                        x["Lineup"][6],
-                        lu_names[7].replace("#", "-"),
-                        x["Lineup"][7],
-                        lu_names[8].replace("#", "-"),
-                        x["Lineup"][8],
-                        lu_names[9].replace("#", "-"),
-                        x["Lineup"][9],
-                        fpts_p,
-                        ceil_p,
-                        salary,
-                        win_p,
-                        top10_p,
-                        own_p,
-                        cash_p,
-                        lu_type,
-                    )
-            elif self.site == "fd":
-                if self.use_contest_data:
-                    roi_p = round(
-                        x["ROI"] / self.entry_fee / self.num_iterations * 100, 2
-                    )
-                    roi_round = round(x["ROI"] / self.num_iterations, 2)
-                    lineup_str = "{}:{},{}:{},{}:{},{}:{},{}:{},{}:{},{}:{},{}:{},{}:{},{},{},{},{}%,{}%,{}%,{},${},{}".format(
-                        self.id_name_dict[x["Lineup"][0].replace("-", "#")]["ID"],
-                        lu_names[0].replace("#", "-"),
-                        self.id_name_dict[x["Lineup"][1].replace("-", "#")]["ID"],
-                        lu_names[1].replace("#", "-"),
-                        self.id_name_dict[x["Lineup"][2].replace("-", "#")]["ID"],
-                        lu_names[2].replace("#", "-"),
-                        x["Lineup"][3],
-                        lu_names[3].replace("#", "-"),
-                        x["Lineup"][4],
-                        lu_names[4].replace("#", "-"),
-                        x["Lineup"][5],
-                        lu_names[5].replace("#", "-"),
-                        x["Lineup"][6],
-                        lu_names[6].replace("#", "-"),
-                        x["Lineup"][7],
-                        lu_names[7].replace("#", "-"),
-                        x["Lineup"][8],
-                        lu_names[8].replace("#", "-"),
-                        fpts_p,
-                        ceil_p,
-                        salary,
-                        win_p,
-                        top10_p,
-                        roi_p,
-                        own_p,
-                        roi_round,
-                        lu_type
-                    )
-                else:
-                    lineup_str = "{}:{},{}:{},{}:{},{}:{},{}:{},{}:{},{}:{},{}:{},{}:{},{},{},{},{}%,{}%,{},{}%,${},{}".format(
-                        x["Lineup"][0],
-                        lu_names[0].replace("#", "-"),
-                        x["Lineup"][1],
-                        lu_names[1].replace("#", "-"),
-                        x["Lineup"][2],
-                        lu_names[2].replace("#", "-"),
-                        x["Lineup"][3],
-                        lu_names[3].replace("#", "-"),
-                        x["Lineup"][4],
-                        lu_names[4].replace("#", "-"),
-                        x["Lineup"][5],
-                        lu_names[5].replace("#", "-"),
-                        x["Lineup"][6],
-                        lu_names[6].replace("#", "-"),
-                        x["Lineup"][7],
-                        lu_names[7].replace("#", "-"),
-                        x["Lineup"][8],
-                        lu_names[8].replace("#", "-"),
-                        fpts_p,
-                        ceil_p,
-                        salary,
-                        win_p,
-                        top10_p,
-                        own_p,
-                        cash_p,
-                        lu_type
-                    )
-            unique[index] = lineup_str
-
-        out_path = os.path.join(
-            os.path.dirname(__file__),
-            "../output/{}_gpp_sim_lineups_{}_{}.csv".format(
-                self.site, self.field_size, self.num_iterations
-            ),
-        )
-        with open(out_path, "w") as f:
-            if self.site == "dk":
-                if self.use_contest_data:
-                    f.write(
-                        "P,P,C,1B,2B,3B,SS,OF,OF,OF,Fpts Proj,Ceiling,Salary,Win %,Top 10%,ROI%,Proj. Own. Product, Avg. Return,Stack1 Type, Stack2 Type, Num Opp Hitters, Lineup Type\n"
-                    )
-                else:
-                    f.write(
-                        "P,P,C,1B,2B,3B,SS,OF,OF,OF,Fpts Proj,Ceiling,Salary,Win %,Top 10%,Proj. Own. Product,Cash %,Type\n"
-                    )
-            elif self.site == "fd":
-                if self.use_contest_data:
-                    f.write(
-                        "P,C/1B,2B,3B,SS,OF,OF,OF,UTIL,Fpts Proj,Ceiling,Salary,Win %,Top 10%,ROI%,Proj. Own. Product, Avg. Return,Type\n"
-                    )
-                else:
-                    f.write(
-                        "P,C/1B,2B,3B,SS,OF,OF,OF,UTIL,Fpts Proj,Ceiling,Salary,Win %,Top 10%,Proj. Own. Product,Cash %,Type\n"
-                    )
-
-            for fpts, lineup_str in unique.items():
-                f.write("%s\n" % lineup_str)
-
-        out_path = os.path.join(
-            os.path.dirname(__file__),
-            "../output/{}_gpp_sim_player_exposure_{}_{}.csv".format(
-                self.site, self.field_size, self.num_iterations
-            ),
-        )
-        with open(out_path, "w") as f:
-            f.write("Player,Win%,Top10%,Sim. Own%,Proj. Own%,Avg. Return\n")
-            unique_players = {}
-            for val in self.field_lineups.values():
-                for player in val["Lineup"]:
-                    if player not in unique_players:
-                        unique_players[player] = {
-                            "Wins": val["Wins"],
-                            "Top10": val["Top10"],
-                            "In": 1,
-                            "ROI": val["ROI"],
-                        }
-                    else:
-                        unique_players[player]["Wins"] = (
-                            unique_players[player]["Wins"] + val["Wins"]
-                        )
-                        unique_players[player]["Top10"] = (
-                            unique_players[player]["Top10"] + val["Top10"]
-                        )
-                        unique_players[player]["In"] = unique_players[player]["In"] + 1
-                        unique_players[player]["ROI"] = (
-                            unique_players[player]["ROI"] + val["ROI"]
-                        )
-
-            for player, data in unique_players.items():
-                field_p = round(data["In"] / self.field_size * 100, 2)
-                win_p = round(data["Wins"] / self.num_iterations * 100, 2)
-                top10_p = round(data["Top10"] / self.num_iterations / 10 * 100, 2)
-                roi_p = round(data["ROI"] / data["In"] / self.num_iterations, 2)
-                for k,v in self.player_dict.items():
-                    if player == v["ID"]:
-                        proj_own = v["Ownership"]
-                        p_name = v["Name"]
-                        break
-                f.write(
-                    "{},{}%,{}%,{}%,{}%,${}\n".format(
-                        p_name.replace("#","-"),
-                        win_p,
-                        top10_p,
-                        field_p,
-                        proj_own,
-                        roi_p,
-                    )
+                # creating the lineup string
+                lineup_str = "{} ({}),{} ({}),{} ({}),{} ({}),{} ({}),{} ({}),{} ({}),{} ({}),{} ({}),{} ({})".format(
+                    lu_names[0].replace("#", "-"),
+                    x["Lineup"][0],
+                    lu_names[1].replace("#", "-"),
+                    x["Lineup"][1],
+                    lu_names[2].replace("#", "-"),
+                    x["Lineup"][2],
+                    lu_names[3].replace("#", "-"),
+                    x["Lineup"][3],
+                    lu_names[4].replace("#", "-"),
+                    x["Lineup"][4],
+                    lu_names[5].replace("#", "-"),
+                    x["Lineup"][5],
+                    lu_names[6].replace("#", "-"),
+                    x["Lineup"][6],
+                    lu_names[7].replace("#", "-"),
+                    x["Lineup"][7],
+                    lu_names[8].replace("#", "-"),
+                    x["Lineup"][8],
+                    lu_names[9].replace("#", "-"),
+                    x["Lineup"][9]
                 )
+
+                
+                # continue adding relevant features to the lineup_row dictionary
+                lineup_row['salary'] = salary
+                lineup_row['fpts_p'] = fpts_p
+                lineup_row['own_p'] = own_p
+                lineup_row['stacks'] = str(stacks[0][0]) + ' ' + str(stacks[0][1]), str(stacks[1][0]) + ' ' + str(stacks[1][1])
+                lineup_row['hitters_vs_pitcher'] = hitters_vs_pitcher
+                lineup_row['lu_type'] = lu_type
+                lineup_row['lineup_str'] = lineup_str
+                lineups_data.append(lineup_row)
+
+            # Convert list of dictionaries to DataFrame
+            df_lineups = pd.DataFrame(lineups_data)
+
+            # split lineup_str into separate columns and assign your custom column names
+            lineup_df = df_lineups['lineup_str'].str.split(',', expand=True)
+            lineup_df.columns = ['P','P','C','1B','2B','3B','SS','OF','OF','OF']
+
+            # Convert stacks column to DataFrame
+            stacks_df = df_lineups['stacks'].apply(pd.Series)
+            # Rename columns
+            stacks_df.columns = ['main', 'sub']
+
+            # drop the original lineup_str and stacks columns from df_lineups and concat lineup_df and stacks_df
+            df_lineups = df_lineups.drop(['lineup_str', 'stacks'], axis=1)
+            df_lineups = pd.concat([lineup_df, stacks_df, df_lineups], axis=1)
+
+            # Write DataFrame to CSV
+            df_lineups.to_csv('/Users/jack/GitHub/MLB-DFS-Tools/dk_data/tournament_lineups.csv', index=False)

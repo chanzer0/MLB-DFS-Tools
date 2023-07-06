@@ -1,6 +1,7 @@
 import sys
 from mlb_optimizer import *
 from mlb_gpp_simulator import *
+from mlb_subset import *
 from windows_inhibitor import *
 
 
@@ -52,6 +53,40 @@ def main(arguments):
         # sim.generate_field_lineups()
         sim.run_tournament_simulation()
         sim.output()
+
+
+    # field_size here is going to be how many lineups I want 
+
+    if process == "build":
+        site = arguments[1]
+        field_size = -1
+        num_iterations = -1
+        use_contest_data = False
+        use_file_upload = False
+        match_lineup_input_to_field_size = True
+        if arguments[3] == "cid":
+            use_contest_data = True
+        else:
+            field_size = arguments[3]
+
+        if arguments[4] == "file":
+            use_file_upload = True
+            num_iterations = arguments[5]
+        else:
+            num_iterations = arguments[4]
+        # if 'match' in arguments:
+        #    match_lineup_input_to_field_size = True
+        sim = MLB_Subset(
+            site,
+            field_size,
+            num_iterations,
+            use_contest_data,
+            use_file_upload,
+            match_lineup_input_to_field_size,
+        )
+        
+        sim.generate_field_lineups()
+
 
 
 if __name__ == "__main__":
