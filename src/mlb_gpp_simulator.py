@@ -17,7 +17,9 @@ from copulas.multivariate import GaussianMultivariate
 from copulas.univariate import GammaUnivariate, GaussianUnivariate
 import warnings
 from tqdm import tqdm
-from scipy.stats import norm, gamma
+from scipy.stats import norm, kendalltau, multivariate_normal, gamma
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 
 
@@ -832,19 +834,26 @@ class MLB_GPP_Simulator:
         # matrix is 10 x 10. FIrst 9 rows are hitters. Each row is the correlation of a lineup spot (player_dict 'Order') with the other 9 spots. 
         # The lists are in order of the player_dict 'Order' key. 1-9 represents the 9 spots in the lineup, the last row is the pitcher and 'Order' is None.
         # last row is pitcher from team of hitters who has a 0 correlation with the hitters on his team. 
+
+
         correlation_matrix = np.array([
-            [1, 0.2, 0.175, 0.15, 0.125, 0.1, 0.075, 0.05, 0.025, 0],
-            [0.2, 1, 0.2, 0.175, 0.15, 0.125, 0.1, 0.075, 0.05, 0],
-            [0.175, 0.2, 1, 0.2, 0.175, 0.15, 0.125, 0.1, 0.075, 0],
-            [0.15, 0.175, 0.2, 1, 0.2, 0.175, 0.15, 0.125, 0.1, 0],
-            [0.125, 0.15, 0.175, 0.2, 1, 0.2, 0.175, 0.15, 0.125, 0],
-            [0.1, 0.125, 0.15, 0.175, 0.2, 1, 0.2, 0.175, 0.15, 0],
-            [0.075, 0.1, 0.125, 0.15, 0.175, 0.2, 1, 0.2, 0.175, 0],
-            [0.05, 0.075, 0.1, 0.125, 0.15, 0.175, 0.2, 1, 0.2, 0],
-            [0.025, 0.05, 0.075, 0.1, 0.125, 0.15, 0.175, 0.2, 1, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 1]
+            [1, 0.2, 0.175, 0.15, 0.125, 0.1, 0.075, 0.05, 0.025, .02],
+            [0.2, 1, 0.2, 0.175, 0.15, 0.125, 0.1, 0.075, 0.05, .02],
+            [0.175, 0.2, 1, 0.2, 0.175, 0.15, 0.125, 0.1, 0.075, .02],
+            [0.15, 0.175, 0.2, 1, 0.2, 0.175, 0.15, 0.125, 0.1, .02],
+            [0.125, 0.15, 0.175, 0.2, 1, 0.2, 0.175, 0.15, 0.125, .02],
+            [0.1, 0.125, 0.15, 0.175, 0.2, 1, 0.2, 0.175, 0.15, .02],
+            [0.075, 0.1, 0.125, 0.15, 0.175, 0.2, 1, 0.2, 0.175, .02],
+            [0.05, 0.075, 0.1, 0.125, 0.15, 0.175, 0.2, 1, 0.2, .02],
+            [0.025, 0.05, 0.075, 0.1, 0.125, 0.15, 0.175, 0.2, 1, .02],
+            [.02, .02, .02, .02, .02, .02, .02, .02, .02, 1]
         ])
 
+        std_devs = [9]*9 + [2]  # Create a list with standard deviations, 9 for the first 9 elements and 2 for the last one.
+        D = np.diag(std_devs)  # Create a diagonal matrix with the standard deviations
+        covariance_matrix = np.dot(D, np.dot(correlation_matrix, D))  # Calculate covariance matrix
+        
+        # print(covariance_matrix)
 
         team = sorted(team, key=lambda player: float('inf') if player['Order'] is None else player['Order'])
         # print(team)
@@ -888,37 +897,62 @@ class MLB_GPP_Simulator:
         hitters_params = [(fpts, stddev) for fpts, stddev in zip(hitters_fpts, hitters_stddev)]
         pitcher_params = (pitcher_fpts, pitcher_stddev)
 
-        # Cholesky decomposition
-        L = np.linalg.cholesky(correlation_matrix)
+        multi_normal = multivariate_normal(mean=[0]*10, cov=covariance_matrix)
 
-        # Generate independent standard normal random variables
-        rv = np.random.normal(size=(10, num_iterations))
+        # Draw samples from the multivariate normal distribution
+        samples = multi_normal.rvs(size=num_iterations)
 
-        # Generate correlated standard normal random variables
-        correlated_normals = np.dot(L, rv)
+        # Convert the normal random variables to uniform using the cumulative distribution function (CDF)
+        uniform_samples = norm.cdf(samples)
 
-        # Convert correlated standard normal random variables to desired distributions
-        hitters_samples = [gamma.ppf(norm.cdf(n), *self.calc_gamma(*params)) for n, params in zip(correlated_normals[:-1], hitters_params)]
-        pitcher_samples = norm.ppf(norm.cdf(correlated_normals[-1]), *pitcher_params)
+        # Convert uniform samples to desired distributions
+        hitters_samples = [gamma.ppf(u, *params) for u, params in zip(uniform_samples.T, hitters_params)]
+        pitcher_samples = norm.ppf(uniform_samples.T[-1], *pitcher_params)
 
-        # Prepare to write to CSV
-        # File will be named "simulation_results.csv", will overwrite existing file
-        filename = 'simulation_results.csv'
-        with open(filename, mode='w', newline='') as file:
-            writer = csv.writer(file)
 
-            # Write header (player names)
-            player_names = [player['Name'] for player in hitters_tuple_keys] + [pitcher_tuple_key['Name']]
-            writer.writerow(player_names)
+        # for player_scores in hitters_samples:
+        #     print(np.std(player_scores))
 
-            # Write each row of samples
-            for i in range(num_iterations):
-                row_samples = [hitters_samples[j][i] for j in range(len(hitters_samples))] + [pitcher_samples[i]]
-                writer.writerow(row_samples)
 
-        print(f"Simulation results have been written to {os.path.abspath(filename)}.")
+        # Prepare to draw the distribution shape
+        fig, ax = plt.subplots(figsize=(12,8))
+
+        for i, hitter in enumerate(hitters_tuple_keys):
+            sns.kdeplot(hitters_samples[i], ax=ax, label=hitter['Name'])
+
+        # Add the pitcher's distribution to the plot
+        sns.kdeplot(pitcher_samples, ax=ax, label=pitcher_tuple_key['Name'], linestyle='--')
+
+        # Adding legend, labels and title
+        ax.legend(loc='upper right')
+        ax.set_xlabel('Fpts')
+        ax.set_ylabel('Density')
+        ax.set_title(f'Team {team_id} Distributions')
+
+        # Saving the plot to a PNG file
+        plt.savefig(f'Team_{team_id}_Distributions.png')
+        plt.close()
+
+        # Print the correlation matrix in a user-friendly format
+        # print(f"\nCorrelation Matrix for Team {team_id}:\n")
+        player_order = [player['Order'] if player['Order'] is not None else float('inf') for player in hitters_tuple_keys] + [float('inf')]
+        player_names = [player['Name'] for _, player in sorted(zip(player_order, hitters_tuple_keys + [pitcher_tuple_key]))]
+        samples_order = [hitters_samples[i] for i in range(len(hitters_samples))] + [pitcher_samples]
+        sorted_samples = [x for _, x in sorted(zip(player_order, samples_order))]
+
+        # Ensure the data is correctly structured as a 2D array
+        sorted_samples_array = np.array(sorted_samples)
+        print(sorted_samples_array)
+        # Ensure each row of the array is a variable and each column is an observation
+        if sorted_samples_array.shape[0] < sorted_samples_array.shape[1]:
+            sorted_samples_array = sorted_samples_array.T
+
+        correlation_matrix = pd.DataFrame(np.corrcoef(sorted_samples_array.T), columns=player_names, index=player_names)
+
+        # print(correlation_matrix)
 
         temp_fpts_dict = {}
+
         for i, hitter in enumerate(hitters_tuple_keys):
             temp_fpts_dict[hitter['ID']] = hitters_samples[i]
 
