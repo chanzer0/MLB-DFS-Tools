@@ -869,7 +869,7 @@ class MLB_GPP_Simulator:
         # Add 0.1 to the values where the mask is True
         correlation_matrix[mask] *= 1
 
-        std_devs = [3]*9 + [1] + [1] # Create a list with standard deviations, 9 for the first 9 elements and 2 for the last one.
+        std_devs = [3]*9 + [1] + [1] 
         D = np.diag(std_devs)  # Create a diagonal matrix with the standard deviations
         covariance_matrix = np.dot(D, np.dot(correlation_matrix, D))  # Calculate covariance matrix
 
@@ -902,7 +902,7 @@ class MLB_GPP_Simulator:
                 opposing_pitcher_id = next((p['ID'] for p in self.teams_dict[player['Opp']] if 'P' in p['Position']), None)
                 break
 
-        # Define opposing_pitcher_samples before first use
+
         opposing_pitcher_samples = None
 
         # if opp P has not been simmed, sim it
@@ -916,21 +916,20 @@ class MLB_GPP_Simulator:
                 opposing_pitcher_samples = np.random.normal(loc=opposing_pitcher_fpts, scale=opposing_pitcher_stddev, size=size)
                 pitcher_samples_dict[opposing_pitcher_id] = opposing_pitcher_samples
 
-        # Preparing players for simulation
+   
         hitters_params = [(fpts, stddev) for fpts, stddev in zip(hitters_fpts, hitters_stddev)]
         pitcher_params = (pitcher_fpts, pitcher_stddev)
         opposing_pitcher_params = (opposing_pitcher_fpts, opposing_pitcher_stddev)
 
         multi_normal = multivariate_normal(mean=[0]*11, cov=covariance_matrix)
 
-        # Draw samples from the multivariate normal distribution
         samples = multi_normal.rvs(size=num_iterations)
 
-        # Convert the normal random variables to uniform using the cumulative distribution function (CDF)
+    
         uniform_samples = norm.cdf(samples)
 
-        cap = 50  # Define your cap
-        max_attempts = 1000  # Define your maximum attempts
+        cap = 50  
+        max_attempts = 1000  
 
         hitters_samples = []
         for u, params in zip(uniform_samples.T, hitters_params):
@@ -954,7 +953,7 @@ class MLB_GPP_Simulator:
         
 
         fig, (ax1, ax2) = plt.subplots(2, figsize=(10, 15))
-        fig.tight_layout(pad=5.0)  # Add padding for better visibility
+        fig.tight_layout(pad=5.0)  
 
 
         for i, hitter in enumerate(hitters_tuple_keys):
@@ -973,7 +972,7 @@ class MLB_GPP_Simulator:
         ax1.tick_params(axis='both', which='both', labelsize=14)
 
         y_min, y_max = ax1.get_ylim()
-        ax1.set_ylim(y_min, y_max*1.1)  # Adjust the y_max to 10% more than the current y_max for some padding
+        ax1.set_ylim(y_min, y_max*1.1) 
 
         ax1.set_xlim(-5, 70)
 
@@ -988,10 +987,9 @@ class MLB_GPP_Simulator:
         if sorted_samples_array.shape[0] < sorted_samples_array.shape[1]:
             sorted_samples_array = sorted_samples_array.T
 
-        # Creating the correlation matrix
+
         correlation_matrix = pd.DataFrame(np.corrcoef(sorted_samples_array.T), columns=player_names, index=player_names)
 
-        # Plotting the correlation matrix
         sns.heatmap(correlation_matrix, annot=True, ax=ax2, cmap='YlGnBu', cbar_kws={"shrink": .5})  
         ax2.set_title(f'Correlation Matrix for Team {team_id}', fontsize=14)
 
