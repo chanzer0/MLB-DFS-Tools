@@ -849,10 +849,18 @@ class MLB_GPP_Simulator:
             [.02, .02, .02, .02, .02, .02, .02, .02, .02, 1]
         ])
 
-        std_devs = [9]*9 + [2]  # Create a list with standard deviations, 9 for the first 9 elements and 2 for the last one.
+
+        # Create a boolean mask of the values that are not equal to 1
+        mask = correlation_matrix != 1
+
+        # Add 0.1 to the values where the mask is True
+        correlation_matrix[mask] *= 1
+
+        std_devs = [3]*9 + [1] # Create a list with standard deviations, 9 for the first 9 elements and 2 for the last one.
         D = np.diag(std_devs)  # Create a diagonal matrix with the standard deviations
         covariance_matrix = np.dot(D, np.dot(correlation_matrix, D))  # Calculate covariance matrix
-        
+
+
         # print(covariance_matrix)
 
         team = sorted(team, key=lambda player: float('inf') if player['Order'] is None else player['Order'])
@@ -881,17 +889,30 @@ class MLB_GPP_Simulator:
                 opposing_pitcher_id = next((p['ID'] for p in self.teams_dict[player['Opp']] if 'P' in p['Position']), None)
                 break
 
+        # Define opposing_pitcher_samples before first use
+        opposing_pitcher_samples = None
+
         # if opp P has not been simmed, sim it
-        if opposing_pitcher_id is not None and opposing_pitcher_id not in pitcher_samples_dict:
+        if opposing_pitcher_id is not None:
             opposing_pitcher = next((p for p in team if p['ID'] == opposing_pitcher_id), None)
-            if opposing_pitcher is not None:
+            if opposing_pitcher is not None and opposing_pitcher_id not in pitcher_samples_dict:
                 opposing_pitcher_fpts = opposing_pitcher['Fpts']
                 opposing_pitcher_stddev = opposing_pitcher['StdDev']
                 opposing_pitcher_samples = np.random.normal(loc=opposing_pitcher_fpts, scale=opposing_pitcher_stddev, size=size)
                 pitcher_samples_dict[opposing_pitcher_id] = opposing_pitcher_samples
 
-        if opposing_pitcher_id is not None:
-            hitters_fpts = hitters_fpts * (1 + pitcher_hitter_correlation)
+        # Adjust hitter and pitcher performance
+        if opposing_pitcher_id is not None and pitcher_tuple_key['ID'] != opposing_pitcher_id and opposing_pitcher_samples is not None:
+            pitcher_samples_mean = np.mean(pitcher_samples)
+            opposing_pitcher_samples_mean = np.mean(opposing_pitcher_samples)
+
+            pitcher_performance_ratio = 1 - (pitcher_samples_mean / (pitcher_samples_mean + opposing_pitcher_samples_mean))
+            opposing_pitcher_performance_ratio = 1 - pitcher_performance_ratio
+
+            hitters_fpts = hitters_fpts * (1 + pitcher_performance_ratio)
+            pitcher_samples = pitcher_samples * (1 - opposing_pitcher_performance_ratio)
+
+
 
         # Preparing players for simulation
         hitters_params = [(fpts, stddev) for fpts, stddev in zip(hitters_fpts, hitters_stddev)]
@@ -905,60 +926,86 @@ class MLB_GPP_Simulator:
         # Convert the normal random variables to uniform using the cumulative distribution function (CDF)
         uniform_samples = norm.cdf(samples)
 
-        # Convert uniform samples to desired distributions
-        hitters_samples = [gamma.ppf(u, *params) for u, params in zip(uniform_samples.T, hitters_params)]
-        pitcher_samples = norm.ppf(uniform_samples.T[-1], *pitcher_params)
+        cap = 50  # Define your cap
+        max_attempts = 1000  # Define your maximum attempts
 
+        hitters_samples = []
+        for u, params in zip(uniform_samples.T, hitters_params):
+            attempts = 0
+            sample = gamma.ppf(u, *params)
+            # If sample is an array, apply check and adjustment for each value
+            if isinstance(sample, np.ndarray):
+                for i, s in enumerate(sample):
+                    while s > cap and attempts < max_attempts:
+                        u = np.random.uniform()  # Generate a new uniform random number
+                        s = gamma.ppf(u, *params)
+                        attempts += 1
+                    if attempts == max_attempts:
+                        s = random.randint(0,5)  # If max attempts are reached, set sample to 0
+                    sample[i] = s
+            hitters_samples.append(sample)
+
+
+        pitcher_samples = norm.ppf(uniform_samples.T[-1], *pitcher_params)
+        
 
         # for player_scores in hitters_samples:
         #     print(np.std(player_scores))
 
 
         # Prepare to draw the distribution shape
-        fig, ax = plt.subplots(figsize=(12,8))
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12,16))
 
+        # KDE plots
         for i, hitter in enumerate(hitters_tuple_keys):
-            sns.kdeplot(hitters_samples[i], ax=ax, label=hitter['Name'])
+            sns.kdeplot(hitters_samples[i], ax=ax1, label=hitter['Name'])
 
         # Add the pitcher's distribution to the plot
-        sns.kdeplot(pitcher_samples, ax=ax, label=pitcher_tuple_key['Name'], linestyle='--')
+        sns.kdeplot(pitcher_samples, ax=ax1, label=pitcher_tuple_key['Name'], linestyle='--')
 
         # Adding legend, labels and title
-        ax.legend(loc='upper right')
-        ax.set_xlabel('Fpts')
-        ax.set_ylabel('Density')
-        ax.set_title(f'Team {team_id} Distributions')
+        ax1.legend(loc='upper right')
+        ax1.set_xlabel('Fpts')
+        ax1.set_ylabel('Density')
+        ax1.set_title(f'Team {team_id} Distributions')
 
-        # Saving the plot to a PNG file
-        plt.savefig(f'Team_{team_id}_Distributions.png')
-        plt.close()
-
-        # Print the correlation matrix in a user-friendly format
-        # print(f"\nCorrelation Matrix for Team {team_id}:\n")
+        # Correlation matrix
         player_order = [player['Order'] if player['Order'] is not None else float('inf') for player in hitters_tuple_keys] + [float('inf')]
-        player_names = [player['Name'] for _, player in sorted(zip(player_order, hitters_tuple_keys + [pitcher_tuple_key]))]
+        player_names = [f"{player['Name']} ({player['Order']})" if player['Order'] is not None else f"{player['Name']} (P)" for player in hitters_tuple_keys] + [f"{pitcher_tuple_key['Name']} (P)"]
         samples_order = [hitters_samples[i] for i in range(len(hitters_samples))] + [pitcher_samples]
         sorted_samples = [x for _, x in sorted(zip(player_order, samples_order))]
 
         # Ensure the data is correctly structured as a 2D array
         sorted_samples_array = np.array(sorted_samples)
-        print(sorted_samples_array)
+        inf_count = np.count_nonzero(np.isinf(sorted_samples_array))
+        print(inf_count)
+
         # Ensure each row of the array is a variable and each column is an observation
         if sorted_samples_array.shape[0] < sorted_samples_array.shape[1]:
             sorted_samples_array = sorted_samples_array.T
 
         correlation_matrix = pd.DataFrame(np.corrcoef(sorted_samples_array.T), columns=player_names, index=player_names)
 
-        # print(correlation_matrix)
+        # Create a mask for the upper triangle
+        mask = np.triu(np.ones_like(correlation_matrix, dtype=bool))
+
+        # Heatmap plot
+        sns.heatmap(correlation_matrix, annot=True, ax=ax2, cmap='YlGnBu')
+
+        ax2.set_title(f'Correlation Matrix for Team {team_id}')
+
+        # Saving the plot to a PNG file
+        plt.savefig(f'Team_{team_id}_Distributions_Correlation.png')
+        plt.close()
 
         temp_fpts_dict = {}
-
         for i, hitter in enumerate(hitters_tuple_keys):
             temp_fpts_dict[hitter['ID']] = hitters_samples[i]
 
         temp_fpts_dict[pitcher_tuple_key['ID']] = pitcher_samples
 
         return temp_fpts_dict
+
 
 
     def run_tournament_simulation(self):
