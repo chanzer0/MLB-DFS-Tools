@@ -855,16 +855,17 @@ class MLB_GPP_Simulator:
 
 
         correlation_matrix = np.array([
-            [1, 0.2, 0.175, 0.15, 0.125, 0.1, 0.075, 0.05, 0.025, .02],
-            [0.2, 1, 0.2, 0.175, 0.15, 0.125, 0.1, 0.075, 0.05, .02],
-            [0.175, 0.2, 1, 0.2, 0.175, 0.15, 0.125, 0.1, 0.075, .02],
-            [0.15, 0.175, 0.2, 1, 0.2, 0.175, 0.15, 0.125, 0.1, .02],
-            [0.125, 0.15, 0.175, 0.2, 1, 0.2, 0.175, 0.15, 0.125, .02],
-            [0.1, 0.125, 0.15, 0.175, 0.2, 1, 0.2, 0.175, 0.15, .02],
-            [0.075, 0.1, 0.125, 0.15, 0.175, 0.2, 1, 0.2, 0.175, .02],
-            [0.05, 0.075, 0.1, 0.125, 0.15, 0.175, 0.2, 1, 0.2, .02],
-            [0.025, 0.05, 0.075, 0.1, 0.125, 0.15, 0.175, 0.2, 1, .02],
-            [.02, .02, .02, .02, .02, .02, .02, .02, .02, 1]
+            [1, 0.2, 0.175, 0.15, 0.125, 0.1, 0.075, 0.05, 0.025, .02, -.4],
+            [0.2, 1, 0.2, 0.175, 0.15, 0.125, 0.1, 0.075, 0.05, .02, -.4],
+            [0.175, 0.2, 1, 0.2, 0.175, 0.15, 0.125, 0.1, 0.075, .02, -.4],
+            [0.15, 0.175, 0.2, 1, 0.2, 0.175, 0.15, 0.125, 0.1, .02, -.4],
+            [0.125, 0.15, 0.175, 0.2, 1, 0.2, 0.175, 0.15, 0.125, .02, -.4],
+            [0.1, 0.125, 0.15, 0.175, 0.2, 1, 0.2, 0.175, 0.15, .02, -.4],
+            [0.075, 0.1, 0.125, 0.15, 0.175, 0.2, 1, 0.2, 0.175, .02, -.4],
+            [0.05, 0.075, 0.1, 0.125, 0.15, 0.175, 0.2, 1, 0.2, .02, -.4],
+            [0.025, 0.05, 0.075, 0.1, 0.125, 0.15, 0.175, 0.2, 1, .02, -.4],
+            [.02, .02, .02, .02, .02, .02, .02, .02, .02, 1, -.4],
+            [-.4, -.4, -.4, -.4, -.4, -.4, -.4, -.4, -.4, -.4, 1]
         ])
 
 
@@ -874,7 +875,7 @@ class MLB_GPP_Simulator:
         # Add 0.1 to the values where the mask is True
         correlation_matrix[mask] *= 1
 
-        std_devs = [3]*9 + [1] # Create a list with standard deviations, 9 for the first 9 elements and 2 for the last one.
+        std_devs = [3]*9 + [1] + [1] # Create a list with standard deviations, 9 for the first 9 elements and 2 for the last one.
         D = np.diag(std_devs)  # Create a diagonal matrix with the standard deviations
         covariance_matrix = np.dot(D, np.dot(correlation_matrix, D))  # Calculate covariance matrix
 
@@ -923,22 +924,22 @@ class MLB_GPP_Simulator:
                 pitcher_samples_dict[opposing_pitcher_id] = opposing_pitcher_samples
 
 
-        # Adjust pitcher and hitter performance
-        if opposing_pitcher_id is not None and pitcher_tuple_key['ID'] != opposing_pitcher_id and opposing_pitcher_samples is not None:
-            pitcher_samples_mean = np.mean(pitcher_samples)
-            # print(pitcher_samples_mean)
-            opposing_pitcher_samples_mean = np.mean(opposing_pitcher_samples)
-            # print(opposing_pitcher_samples_mean)
+        # # Adjust pitcher and hitter performance
+        # if opposing_pitcher_id is not None and pitcher_tuple_key['ID'] != opposing_pitcher_id and opposing_pitcher_samples is not None:
+        #     pitcher_samples_mean = np.mean(pitcher_samples)
+        #     # print(pitcher_samples_mean)
+        #     opposing_pitcher_samples_mean = np.mean(opposing_pitcher_samples)
+        #     # print(opposing_pitcher_samples_mean)
 
-            pitcher_performance_ratio = 1 - (pitcher_samples_mean / (pitcher_samples_mean + opposing_pitcher_samples_mean))
-            opposing_pitcher_performance_ratio = 1 - pitcher_performance_ratio
+        #     pitcher_performance_ratio = 1 - (pitcher_samples_mean / (pitcher_samples_mean + opposing_pitcher_samples_mean))
+        #     opposing_pitcher_performance_ratio = 1 - pitcher_performance_ratio
 
-            # Adjust hitters performance based on pitcher's performance
-            hitters_fpts = hitters_fpts * (1 + pitcher_performance_ratio)
-            # Adjust pitchers performance based on hitter's performance
-            pitcher_samples = pitcher_samples * (1 - np.mean(hitters_fpts) / (np.mean(hitters_fpts) + pitcher_samples_mean))
-            # Adjust opposing pitcher's performance based on hitter's performance
-            opposing_pitcher_samples = opposing_pitcher_samples * (1 - np.mean(hitters_fpts) / (np.mean(hitters_fpts) + opposing_pitcher_samples_mean))
+        #     # Adjust hitters performance based on pitcher's performance
+        #     hitters_fpts = hitters_fpts * (1 + pitcher_performance_ratio)
+        #     # Adjust pitchers performance based on hitter's performance
+        #     pitcher_samples = pitcher_samples * (1 - np.mean(hitters_fpts) / (np.mean(hitters_fpts) + pitcher_samples_mean))
+        #     # Adjust opposing pitcher's performance based on hitter's performance
+        #     opposing_pitcher_samples = opposing_pitcher_samples * (1 - np.mean(hitters_fpts) / (np.mean(hitters_fpts) + opposing_pitcher_samples_mean))
 
 
 
@@ -946,8 +947,9 @@ class MLB_GPP_Simulator:
         # Preparing players for simulation
         hitters_params = [(fpts, stddev) for fpts, stddev in zip(hitters_fpts, hitters_stddev)]
         pitcher_params = (pitcher_fpts, pitcher_stddev)
+        opposing_pitcher_params = (opposing_pitcher_fpts, opposing_pitcher_stddev)
 
-        multi_normal = multivariate_normal(mean=[0]*10, cov=covariance_matrix)
+        multi_normal = multivariate_normal(mean=[0]*11, cov=covariance_matrix)
 
         # Draw samples from the multivariate normal distribution
         samples = multi_normal.rvs(size=num_iterations)
@@ -975,7 +977,8 @@ class MLB_GPP_Simulator:
             hitters_samples.append(sample)
 
 
-        pitcher_samples = norm.ppf(uniform_samples.T[-1], *pitcher_params)
+        pitcher_samples = norm.ppf(uniform_samples.T[-2], *pitcher_params)
+        opposing_pitcher_samples = norm.ppf(uniform_samples.T[-1], *opposing_pitcher_params)
         
 
         # for player_scores in hitters_samples:
