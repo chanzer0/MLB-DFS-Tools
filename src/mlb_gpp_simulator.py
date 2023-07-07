@@ -846,25 +846,19 @@ class MLB_GPP_Simulator:
         return alpha,beta
 
 
-    def run_simulation_for_team(self, team_id, team, pitcher_samples_dict, pitcher_hitter_correlation, num_iterations):
-
-
-        # matrix is 10 x 10. FIrst 9 rows are hitters. Each row is the correlation of a lineup spot (player_dict 'Order') with the other 9 spots. 
-        # The lists are in order of the player_dict 'Order' key. 1-9 represents the 9 spots in the lineup, the last row is the pitcher and 'Order' is None.
-        # last row is pitcher from team of hitters who has a 0 correlation with the hitters on his team. 
-
+    def run_simulation_for_team(self, team_id, team, pitcher_samples_dict, num_iterations):
 
         correlation_matrix = np.array([
-            [1, 0.2, 0.175, 0.15, 0.125, 0.1, 0.075, 0.05, 0.025, .02, -.4],
-            [0.2, 1, 0.2, 0.175, 0.15, 0.125, 0.1, 0.075, 0.05, .02, -.4],
-            [0.175, 0.2, 1, 0.2, 0.175, 0.15, 0.125, 0.1, 0.075, .02, -.4],
-            [0.15, 0.175, 0.2, 1, 0.2, 0.175, 0.15, 0.125, 0.1, .02, -.4],
-            [0.125, 0.15, 0.175, 0.2, 1, 0.2, 0.175, 0.15, 0.125, .02, -.4],
-            [0.1, 0.125, 0.15, 0.175, 0.2, 1, 0.2, 0.175, 0.15, .02, -.4],
-            [0.075, 0.1, 0.125, 0.15, 0.175, 0.2, 1, 0.2, 0.175, .02, -.4],
-            [0.05, 0.075, 0.1, 0.125, 0.15, 0.175, 0.2, 1, 0.2, .02, -.4],
-            [0.025, 0.05, 0.075, 0.1, 0.125, 0.15, 0.175, 0.2, 1, .02, -.4],
-            [.02, .02, .02, .02, .02, .02, .02, .02, .02, 1, -.4],
+            [1.000000, 0.208567, 0.180173, 0.144913, 0.108717, 0.105452, 0.137026, 0.172705, 0.178171, .05, -.4],
+            [0.208567, 1.000000, 0.194440, 0.157801, 0.147979, 0.120411, 0.125511, 0.136052, 0.164456, .05, -.4],
+            [0.180173, 0.194440, 1.000000, 0.190412, 0.160093, 0.120162, 0.108959, 0.128614, 0.126364, .05, -.4],
+            [0.144913, 0.157801, 0.190412, 1.000000, 0.179935, 0.149753, 0.127822, 0.120928, 0.099442, .05, -.4],
+            [0.108717, 0.147979, 0.160093, 0.179935, 1.000000, 0.176625, 0.162855, 0.139522, 0.122343, .05, -.4],
+            [0.105452, 0.120411, 0.120162, 0.149753, 0.176625, 1.000000, 0.175045, 0.153736, 0.117608, .05, -.4],
+            [0.137026, 0.125511, 0.108959, 0.127822, 0.162855, 0.175045, 1.000000, 0.153188, 0.143971, .05, -.4],
+            [0.172705, 0.136052, 0.128614, 0.120928, 0.139522, 0.153736, 0.153188, 1.000000, 0.188197, .05, -.4],
+            [0.178171, 0.164456, 0.126364, 0.099442, 0.122343, 0.117608, 0.143971, 0.188197, 1.000000, .05, -.4],
+            [.05, .05, .05, .05, .05, .05, .05, .05, .05, 1, -.4],
             [-.4, -.4, -.4, -.4, -.4, -.4, -.4, -.4, -.4, -.4, 1]
         ])
 
@@ -878,7 +872,6 @@ class MLB_GPP_Simulator:
         std_devs = [3]*9 + [1] + [1] # Create a list with standard deviations, 9 for the first 9 elements and 2 for the last one.
         D = np.diag(std_devs)  # Create a diagonal matrix with the standard deviations
         covariance_matrix = np.dot(D, np.dot(correlation_matrix, D))  # Calculate covariance matrix
-
 
         # print(covariance_matrix)
 
@@ -923,27 +916,6 @@ class MLB_GPP_Simulator:
                 opposing_pitcher_samples = np.random.normal(loc=opposing_pitcher_fpts, scale=opposing_pitcher_stddev, size=size)
                 pitcher_samples_dict[opposing_pitcher_id] = opposing_pitcher_samples
 
-
-        # # Adjust pitcher and hitter performance
-        # if opposing_pitcher_id is not None and pitcher_tuple_key['ID'] != opposing_pitcher_id and opposing_pitcher_samples is not None:
-        #     pitcher_samples_mean = np.mean(pitcher_samples)
-        #     # print(pitcher_samples_mean)
-        #     opposing_pitcher_samples_mean = np.mean(opposing_pitcher_samples)
-        #     # print(opposing_pitcher_samples_mean)
-
-        #     pitcher_performance_ratio = 1 - (pitcher_samples_mean / (pitcher_samples_mean + opposing_pitcher_samples_mean))
-        #     opposing_pitcher_performance_ratio = 1 - pitcher_performance_ratio
-
-        #     # Adjust hitters performance based on pitcher's performance
-        #     hitters_fpts = hitters_fpts * (1 + pitcher_performance_ratio)
-        #     # Adjust pitchers performance based on hitter's performance
-        #     pitcher_samples = pitcher_samples * (1 - np.mean(hitters_fpts) / (np.mean(hitters_fpts) + pitcher_samples_mean))
-        #     # Adjust opposing pitcher's performance based on hitter's performance
-        #     opposing_pitcher_samples = opposing_pitcher_samples * (1 - np.mean(hitters_fpts) / (np.mean(hitters_fpts) + opposing_pitcher_samples_mean))
-
-
-
-
         # Preparing players for simulation
         hitters_params = [(fpts, stddev) for fpts, stddev in zip(hitters_fpts, hitters_stddev)]
         pitcher_params = (pitcher_fpts, pitcher_stddev)
@@ -981,56 +953,50 @@ class MLB_GPP_Simulator:
         opposing_pitcher_samples = norm.ppf(uniform_samples.T[-1], *opposing_pitcher_params)
         
 
-        # for player_scores in hitters_samples:
-        #     print(np.std(player_scores))
+        fig, (ax1, ax2) = plt.subplots(2, figsize=(10, 15))
+        fig.tight_layout(pad=5.0)  # Add padding for better visibility
 
 
-        # Prepare to draw the distribution shape
-        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12,16))
-
-        # KDE plots
         for i, hitter in enumerate(hitters_tuple_keys):
             sns.kdeplot(hitters_samples[i], ax=ax1, label=hitter['Name'])
 
-        # Add the pitcher's distribution to the plot
+
         sns.kdeplot(pitcher_samples, ax=ax1, label=pitcher_tuple_key['Name'], linestyle='--')
 
-        # Add the opposing pitcher's distribution to the plot
-        sns.kdeplot(opposing_pitcher_samples, ax=ax1, label=opposing_pitcher['Name'], linestyle=':')
 
-        # Adding legend, labels and title
-        ax1.legend(loc='upper right')
-        ax1.set_xlabel('Fpts')
-        ax1.set_ylabel('Density')
-        ax1.set_title(f'Team {team_id} Distributions')
+        sns.kdeplot(opposing_pitcher_samples, ax=ax1, label = opposing_pitcher['Name'] + " (Opp)", linestyle=':')
 
-        # Correlation matrix
+        ax1.legend(loc='upper right', fontsize=14)
+        ax1.set_xlabel('Fpts', fontsize=14)
+        ax1.set_ylabel('Density', fontsize=14)
+        ax1.set_title(f'Team {team_id} Distributions', fontsize=14)
+        ax1.tick_params(axis='both', which='both', labelsize=14)
+
+        y_min, y_max = ax1.get_ylim()
+        ax1.set_ylim(y_min, y_max*1.1)  # Adjust the y_max to 10% more than the current y_max for some padding
+
+        ax1.set_xlim(-5, 70)
+
+        # Sorting players and correlating their data
         player_order = [player['Order'] if player['Order'] is not None else float('inf') for player in hitters_tuple_keys] + [1000, float('inf')]
         player_names = [f"{player['Name']} ({player['Order']})" if player['Order'] is not None else f"{player['Name']} (P)" for player in hitters_tuple_keys] + [f"{pitcher_tuple_key['Name']} (P)", f"{opposing_pitcher['Name']} (Opp P)"]
         samples_order = [hitters_samples[i] for i in range(len(hitters_samples))] + [pitcher_samples, opposing_pitcher_samples]
         sorted_samples = [x for _, x in sorted(zip(player_order, samples_order))]
 
-        # Ensure the data is correctly structured as a 2D array
+        # Ensuring the data is correctly structured as a 2D array
         sorted_samples_array = np.array(sorted_samples)
-
-        # Ensure each row of the array is a variable and each column is an observation
         if sorted_samples_array.shape[0] < sorted_samples_array.shape[1]:
             sorted_samples_array = sorted_samples_array.T
 
+        # Creating the correlation matrix
         correlation_matrix = pd.DataFrame(np.corrcoef(sorted_samples_array.T), columns=player_names, index=player_names)
 
-        # Create a mask for the upper triangle
-        mask = np.triu(np.ones_like(correlation_matrix, dtype=bool))
-
-        # Heatmap plot
-        sns.heatmap(correlation_matrix, annot=True, ax=ax2, cmap='YlGnBu')
-
-        ax2.set_title(f'Correlation Matrix for Team {team_id}')
+        # Plotting the correlation matrix
+        sns.heatmap(correlation_matrix, annot=True, ax=ax2, cmap='YlGnBu', cbar_kws={"shrink": .5})  
+        ax2.set_title(f'Correlation Matrix for Team {team_id}', fontsize=14)
 
 
-
-        # Saving the plot to a PNG file
-        plt.savefig(f'Team_{team_id}_Distributions_Correlation.png')
+        plt.savefig(f'Team_{team_id}_Distributions_Correlation.png', bbox_inches='tight')  
         plt.close()
 
         temp_fpts_dict = {}
@@ -1038,9 +1004,6 @@ class MLB_GPP_Simulator:
             temp_fpts_dict[hitter['ID']] = hitters_samples[i]
 
         temp_fpts_dict[pitcher_tuple_key['ID']] = pitcher_samples
-
-        # If you also want to return the opposing pitcher samples
-        temp_fpts_dict[opposing_pitcher['ID']] = opposing_pitcher_samples
 
         return temp_fpts_dict
 
@@ -1054,12 +1017,11 @@ class MLB_GPP_Simulator:
         start_time = time.time()
         temp_fpts_dict = {}
         pitcher_samples_dict = {}  # keep track of already simmed pitchers
-        pitcher_hitter_correlation = -0.2
         size = self.num_iterations
 
 
         with mp.Pool() as pool:
-            team_simulation_params = [(team_id, team, pitcher_samples_dict, pitcher_hitter_correlation, size) for team_id, team in self.teams_dict.items()]
+            team_simulation_params = [(team_id, team, pitcher_samples_dict, size) for team_id, team in self.teams_dict.items()]
             results = pool.starmap(self.run_simulation_for_team, team_simulation_params)
         
         for res in results:
