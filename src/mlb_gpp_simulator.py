@@ -91,6 +91,8 @@ class MLB_GPP_Simulator:
             "../{}_data/{}".format(site, self.config["team_stacks_path"]),
         )        
         self.load_team_stacks(stacks_path)
+
+
         
  #       batting_order_path = os.path.join(
  #           os.path.dirname(__file__),
@@ -404,6 +406,9 @@ class MLB_GPP_Simulator:
                 else:
                     team = row['team']
                 self.stacks_dict[team]= float(row["own%"])/100
+
+
+    
                     
     def remap(self, fieldnames):
         return ["P","C/1B","2B","3B","SS","OF","OF","OF","UTIL"]
@@ -901,7 +906,7 @@ class MLB_GPP_Simulator:
                 opposing_pitcher_samples = np.random.normal(loc=opposing_pitcher_fpts, scale=opposing_pitcher_stddev, size=size)
                 pitcher_samples_dict[opposing_pitcher_id] = opposing_pitcher_samples
 
-        # Adjust hitter and pitcher performance
+        # Adjust pitcher and hitter performance
         if opposing_pitcher_id is not None and pitcher_tuple_key['ID'] != opposing_pitcher_id and opposing_pitcher_samples is not None:
             pitcher_samples_mean = np.mean(pitcher_samples)
             opposing_pitcher_samples_mean = np.mean(opposing_pitcher_samples)
@@ -909,8 +914,13 @@ class MLB_GPP_Simulator:
             pitcher_performance_ratio = 1 - (pitcher_samples_mean / (pitcher_samples_mean + opposing_pitcher_samples_mean))
             opposing_pitcher_performance_ratio = 1 - pitcher_performance_ratio
 
+            # Adjust hitters performance based on pitcher's performance
             hitters_fpts = hitters_fpts * (1 + pitcher_performance_ratio)
-            pitcher_samples = pitcher_samples * (1 - opposing_pitcher_performance_ratio)
+            # Adjust pitchers performance based on hitter's performance
+            pitcher_samples = pitcher_samples * (1 - np.mean(hitters_fpts) / (np.mean(hitters_fpts) + pitcher_samples_mean))
+            # Adjust opposing pitcher's performance based on hitter's performance
+            opposing_pitcher_samples = opposing_pitcher_samples * (1 - np.mean(hitters_fpts) / (np.mean(hitters_fpts) + opposing_pitcher_samples_mean))
+
 
 
 
@@ -1008,6 +1018,7 @@ class MLB_GPP_Simulator:
 
 
 
+
     def run_tournament_simulation(self):
         print("Running " + str(self.num_iterations) + " simulations")
 
@@ -1017,24 +1028,6 @@ class MLB_GPP_Simulator:
         pitcher_hitter_correlation = -0.2
         size = self.num_iterations
 
-
-        # # matrix is 10 x 10. FIrst 9 rows are hitters, last row is pitcher from team of hitters who has a 0 correlation with the hitters on his team
-        # correlation_matrix = np.array([
-        #     [1, 0.2, 0.175, 0.15, 0.125, 0.1, 0.075, 0.05, 0.025, 0],
-        #     [0.2, 1, 0.2, 0.175, 0.15, 0.125, 0.1, 0.075, 0.05, 0],
-        #     [0.175, 0.2, 1, 0.2, 0.175, 0.15, 0.125, 0.1, 0.075, 0],
-        #     [0.15, 0.175, 0.2, 1, 0.2, 0.175, 0.15, 0.125, 0.1, 0],
-        #     [0.125, 0.15, 0.175, 0.2, 1, 0.2, 0.175, 0.15, 0.125, 0],
-        #     [0.1, 0.125, 0.15, 0.175, 0.2, 1, 0.2, 0.175, 0.15, 0],
-        #     [0.075, 0.1, 0.125, 0.15, 0.175, 0.2, 1, 0.2, 0.175, 0],
-        #     [0.05, 0.075, 0.1, 0.125, 0.15, 0.175, 0.2, 1, 0.2, 0],
-        #     [0.025, 0.05, 0.075, 0.1, 0.125, 0.15, 0.175, 0.2, 1, 0],
-        #     [0, 0, 0, 0, 0, 0, 0, 0, 0, 1]
-        # ])
-
-
-
-        
 
         with mp.Pool() as pool:
             team_simulation_params = [(team_id, team, pitcher_samples_dict, pitcher_hitter_correlation, size) for team_id, team in self.teams_dict.items()]
