@@ -863,15 +863,11 @@ class MLB_GPP_Simulator:
         ])
 
 
-        # Create a boolean mask of the values that are not equal to 1
-        mask = correlation_matrix != 1
 
-        # Add 0.1 to the values where the mask is True
-        correlation_matrix[mask] *= 1
 
         std_devs = [3]*9 + [1] + [1] 
         D = np.diag(std_devs)  # Create a diagonal matrix with the standard deviations
-        covariance_matrix = np.dot(D, np.dot(correlation_matrix, D))  # Calculate covariance matrix
+        covariance_matrix = np.dot(D, np.dot(correlation_matrix, D))  
 
         # print(covariance_matrix)
 
