@@ -941,7 +941,7 @@ class MLB_GPP_Simulator:
                         s = gamma.ppf(u, *params)
                         attempts += 1
                     if attempts == max_attempts:
-                        s = random.randint(0,5)  # If max attempts are reached, set sample to 0
+                        s = hitter['Fpts']  # If max attempts are reached, set sample to 0
                     sample[i] = s
             hitters_samples.append(sample)
 
