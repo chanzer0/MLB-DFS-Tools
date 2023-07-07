@@ -263,15 +263,18 @@ class MLB_GPP_Simulator:
                         m = 'WAS'
                     if m != team:
                         opp = m
-                  # adjust "opponent" to match your CSV column
                 pos_str = str(position)
                 if (player_name,pos_str, team) in self.player_dict:
                     self.player_dict[(player_name,pos_str, team)]["ID"] = str(row["id"])
                     self.player_dict[(player_name,pos_str, team)]["Team"] =  row["teamabbrev"]
                     self.player_dict[(player_name,pos_str, team)]["Opp"] = opp
-                #else:
-                #    print(row[name_key] + ' not found in projections!')
+                    # Get the opposing pitcher
+                    opp_pitcher_key = next(((name, pos_str, opp_team) for name, pos_str, opp_team in self.player_dict if 'P' in pos_str and opp_team == opp), None)
+                    if opp_pitcher_key:
+                        self.player_dict[(player_name,pos_str, team)]["Opp Pitcher ID"] = self.player_dict[opp_pitcher_key]["ID"]
+                        self.player_dict[(player_name,pos_str, team)]["Opp Pitcher Name"] = self.player_dict[opp_pitcher_key]["Name"]
                 self.id_name_dict[str(row["id"])] = row[name_key]
+
                     
     def load_contest_data(self, path):
         with open(path, encoding="utf-8-sig") as file:
@@ -341,6 +344,8 @@ class MLB_GPP_Simulator:
                     "Team" : team,
                     "Opp" : '',
                     "ID": '',
+                    "Opp Pitcher ID": '',
+                    "Opp Pitcher Name": '',
                     "Salary": int(row["salary"].replace(",", "")),
                     "StdDev": 0,
                     "Ceiling": 0,
@@ -348,6 +353,14 @@ class MLB_GPP_Simulator:
                     "Order": order,  # Handle blank orders
                     "In Lineup": False
                 }
+                
+                # Check if player is in player_dict and get Opp, ID, Opp Pitcher ID and Opp Pitcher Name
+                if (player_name, pos_str, team) in self.player_dict:
+                    player_data["Opp"] = self.player_dict[(player_name, pos_str, team)].get("Opp", '')
+                    player_data["ID"] = self.player_dict[(player_name, pos_str, team)].get("ID", '')
+                    player_data["Opp Pitcher ID"] = self.player_dict[(player_name, pos_str, team)].get("Opp Pitcher ID", '')
+                    player_data["Opp Pitcher Name"] = self.player_dict[(player_name, pos_str, team)].get("Opp Pitcher Name", '')
+                
                 self.player_dict[(player_name, pos_str,team)] = player_data
                 self.teams_dict[team].append(player_data)  # Add player data to their respective team
 
@@ -872,7 +885,7 @@ class MLB_GPP_Simulator:
         # print(team)
         hitters_tuple_keys = [player for player in team if 'P' not in player['Position']]  
         pitcher_tuple_key = [player for player in team if 'P' in player['Position']][0]  
-
+        # print(pitcher_tuple_key)
         hitters_fpts = np.array([hitter['Fpts'] for hitter in hitters_tuple_keys])
         hitters_stddev = np.array([hitter['StdDev'] for hitter in hitters_tuple_keys])
         pitcher_fpts = pitcher_tuple_key['Fpts']
@@ -890,6 +903,7 @@ class MLB_GPP_Simulator:
         # find opp P
         opposing_pitcher_id = None
         for player in team:
+            # print(player)
             if player['Opp'] in self.teams_dict:
                 opposing_pitcher_id = next((p['ID'] for p in self.teams_dict[player['Opp']] if 'P' in p['Position']), None)
                 break
@@ -899,12 +913,15 @@ class MLB_GPP_Simulator:
 
         # if opp P has not been simmed, sim it
         if opposing_pitcher_id is not None:
-            opposing_pitcher = next((p for p in team if p['ID'] == opposing_pitcher_id), None)
+            opposing_pitcher = next((p for p in self.teams_dict[player['Opp']] if 'P' in p['Position']), None)
+            #  print(opposing_pitcher)
             if opposing_pitcher is not None and opposing_pitcher_id not in pitcher_samples_dict:
                 opposing_pitcher_fpts = opposing_pitcher['Fpts']
+                print(opposing_pitcher_fpts)
                 opposing_pitcher_stddev = opposing_pitcher['StdDev']
                 opposing_pitcher_samples = np.random.normal(loc=opposing_pitcher_fpts, scale=opposing_pitcher_stddev, size=size)
                 pitcher_samples_dict[opposing_pitcher_id] = opposing_pitcher_samples
+
 
         # Adjust pitcher and hitter performance
         if opposing_pitcher_id is not None and pitcher_tuple_key['ID'] != opposing_pitcher_id and opposing_pitcher_samples is not None:
@@ -987,8 +1004,8 @@ class MLB_GPP_Simulator:
 
         # Ensure the data is correctly structured as a 2D array
         sorted_samples_array = np.array(sorted_samples)
-        inf_count = np.count_nonzero(np.isinf(sorted_samples_array))
-        print(inf_count)
+        # inf_count = np.count_nonzero(np.isinf(sorted_samples_array))
+        # print(inf_count)
 
         # Ensure each row of the array is a variable and each column is an observation
         if sorted_samples_array.shape[0] < sorted_samples_array.shape[1]:
@@ -1015,6 +1032,7 @@ class MLB_GPP_Simulator:
         temp_fpts_dict[pitcher_tuple_key['ID']] = pitcher_samples
 
         return temp_fpts_dict
+
 
 
 
