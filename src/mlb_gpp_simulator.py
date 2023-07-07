@@ -917,7 +917,7 @@ class MLB_GPP_Simulator:
             #  print(opposing_pitcher)
             if opposing_pitcher is not None and opposing_pitcher_id not in pitcher_samples_dict:
                 opposing_pitcher_fpts = opposing_pitcher['Fpts']
-                print(opposing_pitcher_fpts)
+                # print(opposing_pitcher_fpts)
                 opposing_pitcher_stddev = opposing_pitcher['StdDev']
                 opposing_pitcher_samples = np.random.normal(loc=opposing_pitcher_fpts, scale=opposing_pitcher_stddev, size=size)
                 pitcher_samples_dict[opposing_pitcher_id] = opposing_pitcher_samples
@@ -926,7 +926,9 @@ class MLB_GPP_Simulator:
         # Adjust pitcher and hitter performance
         if opposing_pitcher_id is not None and pitcher_tuple_key['ID'] != opposing_pitcher_id and opposing_pitcher_samples is not None:
             pitcher_samples_mean = np.mean(pitcher_samples)
+            # print(pitcher_samples_mean)
             opposing_pitcher_samples_mean = np.mean(opposing_pitcher_samples)
+            # print(opposing_pitcher_samples_mean)
 
             pitcher_performance_ratio = 1 - (pitcher_samples_mean / (pitcher_samples_mean + opposing_pitcher_samples_mean))
             opposing_pitcher_performance_ratio = 1 - pitcher_performance_ratio
@@ -990,6 +992,9 @@ class MLB_GPP_Simulator:
         # Add the pitcher's distribution to the plot
         sns.kdeplot(pitcher_samples, ax=ax1, label=pitcher_tuple_key['Name'], linestyle='--')
 
+        # Add the opposing pitcher's distribution to the plot
+        sns.kdeplot(opposing_pitcher_samples, ax=ax1, label=opposing_pitcher['Name'], linestyle=':')
+
         # Adding legend, labels and title
         ax1.legend(loc='upper right')
         ax1.set_xlabel('Fpts')
@@ -997,15 +1002,13 @@ class MLB_GPP_Simulator:
         ax1.set_title(f'Team {team_id} Distributions')
 
         # Correlation matrix
-        player_order = [player['Order'] if player['Order'] is not None else float('inf') for player in hitters_tuple_keys] + [float('inf')]
-        player_names = [f"{player['Name']} ({player['Order']})" if player['Order'] is not None else f"{player['Name']} (P)" for player in hitters_tuple_keys] + [f"{pitcher_tuple_key['Name']} (P)"]
-        samples_order = [hitters_samples[i] for i in range(len(hitters_samples))] + [pitcher_samples]
+        player_order = [player['Order'] if player['Order'] is not None else float('inf') for player in hitters_tuple_keys] + [1000, float('inf')]
+        player_names = [f"{player['Name']} ({player['Order']})" if player['Order'] is not None else f"{player['Name']} (P)" for player in hitters_tuple_keys] + [f"{pitcher_tuple_key['Name']} (P)", f"{opposing_pitcher['Name']} (Opp P)"]
+        samples_order = [hitters_samples[i] for i in range(len(hitters_samples))] + [pitcher_samples, opposing_pitcher_samples]
         sorted_samples = [x for _, x in sorted(zip(player_order, samples_order))]
 
         # Ensure the data is correctly structured as a 2D array
         sorted_samples_array = np.array(sorted_samples)
-        # inf_count = np.count_nonzero(np.isinf(sorted_samples_array))
-        # print(inf_count)
 
         # Ensure each row of the array is a variable and each column is an observation
         if sorted_samples_array.shape[0] < sorted_samples_array.shape[1]:
@@ -1021,6 +1024,8 @@ class MLB_GPP_Simulator:
 
         ax2.set_title(f'Correlation Matrix for Team {team_id}')
 
+
+
         # Saving the plot to a PNG file
         plt.savefig(f'Team_{team_id}_Distributions_Correlation.png')
         plt.close()
@@ -1030,6 +1035,9 @@ class MLB_GPP_Simulator:
             temp_fpts_dict[hitter['ID']] = hitters_samples[i]
 
         temp_fpts_dict[pitcher_tuple_key['ID']] = pitcher_samples
+
+        # If you also want to return the opposing pitcher samples
+        temp_fpts_dict[opposing_pitcher['ID']] = opposing_pitcher_samples
 
         return temp_fpts_dict
 
