@@ -990,7 +990,7 @@ class MLB_GPP_Simulator:
         ax2.set_title(f'Correlation Matrix for Team {team_id}', fontsize=14)
 
 
-        plt.savefig(f'Team_{team_id}_Distributions_Correlation.png', bbox_inches='tight')  
+        plt.savefig(f'../output/Team_{team_id}_Distributions_Correlation.png', bbox_inches='tight')
         plt.close()
 
         temp_fpts_dict = {}
