@@ -18,8 +18,8 @@ from copulas.univariate import GammaUnivariate, GaussianUnivariate
 import warnings
 from tqdm import tqdm
 from scipy.stats import norm, kendalltau, multivariate_normal, gamma
-import matplotlib.pyplot as plt
-import seaborn as sns
+# import matplotlib.pyplot as plt
+# import seaborn as sns
 
 
 
@@ -948,50 +948,50 @@ class MLB_GPP_Simulator:
         opposing_pitcher_samples = norm.ppf(uniform_samples.T[-1], *opposing_pitcher_params)
         
 
-        fig, (ax1, ax2) = plt.subplots(2, figsize=(10, 15))
-        fig.tight_layout(pad=5.0)  
+        # fig, (ax1, ax2) = plt.subplots(2, figsize=(10, 15))
+        # fig.tight_layout(pad=5.0)  
 
 
-        for i, hitter in enumerate(hitters_tuple_keys):
-            sns.kdeplot(hitters_samples[i], ax=ax1, label=hitter['Name'])
+        # for i, hitter in enumerate(hitters_tuple_keys):
+        #     sns.kdeplot(hitters_samples[i], ax=ax1, label=hitter['Name'])
 
 
-        sns.kdeplot(pitcher_samples, ax=ax1, label=pitcher_tuple_key['Name'], linestyle='--')
+        # sns.kdeplot(pitcher_samples, ax=ax1, label=pitcher_tuple_key['Name'], linestyle='--')
 
 
-        sns.kdeplot(opposing_pitcher_samples, ax=ax1, label = opposing_pitcher['Name'] + " (Opp)", linestyle=':')
+        # sns.kdeplot(opposing_pitcher_samples, ax=ax1, label = opposing_pitcher['Name'] + " (Opp)", linestyle=':')
 
-        ax1.legend(loc='upper right', fontsize=14)
-        ax1.set_xlabel('Fpts', fontsize=14)
-        ax1.set_ylabel('Density', fontsize=14)
-        ax1.set_title(f'Team {team_id} Distributions', fontsize=14)
-        ax1.tick_params(axis='both', which='both', labelsize=14)
+        # ax1.legend(loc='upper right', fontsize=14)
+        # ax1.set_xlabel('Fpts', fontsize=14)
+        # ax1.set_ylabel('Density', fontsize=14)
+        # ax1.set_title(f'Team {team_id} Distributions', fontsize=14)
+        # ax1.tick_params(axis='both', which='both', labelsize=14)
 
-        y_min, y_max = ax1.get_ylim()
-        ax1.set_ylim(y_min, y_max*1.1) 
+        # y_min, y_max = ax1.get_ylim()
+        # ax1.set_ylim(y_min, y_max*1.1) 
 
-        ax1.set_xlim(-5, 70)
+        # ax1.set_xlim(-5, 70)
 
-        # Sorting players and correlating their data
-        player_order = [player['Order'] if player['Order'] is not None else float('inf') for player in hitters_tuple_keys] + [1000, float('inf')]
-        player_names = [f"{player['Name']} ({player['Order']})" if player['Order'] is not None else f"{player['Name']} (P)" for player in hitters_tuple_keys] + [f"{pitcher_tuple_key['Name']} (P)", f"{opposing_pitcher['Name']} (Opp P)"]
-        samples_order = [hitters_samples[i] for i in range(len(hitters_samples))] + [pitcher_samples, opposing_pitcher_samples]
-        sorted_samples = [x for _, x in sorted(zip(player_order, samples_order))]
+        # # Sorting players and correlating their data
+        # player_order = [player['Order'] if player['Order'] is not None else float('inf') for player in hitters_tuple_keys] + [1000, float('inf')]
+        # player_names = [f"{player['Name']} ({player['Order']})" if player['Order'] is not None else f"{player['Name']} (P)" for player in hitters_tuple_keys] + [f"{pitcher_tuple_key['Name']} (P)", f"{opposing_pitcher['Name']} (Opp P)"]
+        # samples_order = [hitters_samples[i] for i in range(len(hitters_samples))] + [pitcher_samples, opposing_pitcher_samples]
+        # sorted_samples = [x for _, x in sorted(zip(player_order, samples_order))]
 
-        # Ensuring the data is correctly structured as a 2D array
-        sorted_samples_array = np.array(sorted_samples)
-        if sorted_samples_array.shape[0] < sorted_samples_array.shape[1]:
-            sorted_samples_array = sorted_samples_array.T
-
-
-        correlation_matrix = pd.DataFrame(np.corrcoef(sorted_samples_array.T), columns=player_names, index=player_names)
-
-        sns.heatmap(correlation_matrix, annot=True, ax=ax2, cmap='YlGnBu', cbar_kws={"shrink": .5})  
-        ax2.set_title(f'Correlation Matrix for Team {team_id}', fontsize=14)
+        # # Ensuring the data is correctly structured as a 2D array
+        # sorted_samples_array = np.array(sorted_samples)
+        # if sorted_samples_array.shape[0] < sorted_samples_array.shape[1]:
+        #     sorted_samples_array = sorted_samples_array.T
 
 
-        plt.savefig(f'../output/Team_{team_id}_Distributions_Correlation.png', bbox_inches='tight')
-        plt.close()
+        # correlation_matrix = pd.DataFrame(np.corrcoef(sorted_samples_array.T), columns=player_names, index=player_names)
+
+        # sns.heatmap(correlation_matrix, annot=True, ax=ax2, cmap='YlGnBu', cbar_kws={"shrink": .5})  
+        # ax2.set_title(f'Correlation Matrix for Team {team_id}', fontsize=14)
+
+
+        # plt.savefig(f'../output/Team_{team_id}_Distributions_Correlation.png', bbox_inches='tight')
+        # plt.close()
 
         temp_fpts_dict = {}
         for i, hitter in enumerate(hitters_tuple_keys):
