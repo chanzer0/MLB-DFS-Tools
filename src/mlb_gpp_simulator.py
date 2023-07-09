@@ -1132,7 +1132,7 @@ class MLB_GPP_Simulator:
                         lu_type
                     )
                 else:
-                    lineup_str = "{} ({}),{} ({}),{} ({}),{} ({}),{} ({}),{} ({}),{} ({}),{} ({}),{} ({}),{},{}%,{}%,{},{}%,{}".format(
+                    lineup_str = "{} ({}),{} ({}),{} ({}),{} ({}),{} ({}),{} ({}),{} ({}),{} ({}),{} ({}),{} ({}),{},{},{},{}%,{}%,{}%,{},{},{},{}".format(
                         lu_names[0].replace("#", "-"),
                         x["Lineup"][0],
                         lu_names[1].replace("#", "-"),
@@ -1159,8 +1159,10 @@ class MLB_GPP_Simulator:
                         win_p,
                         top10_p,
                         own_p,
-                        cash_p,
-                        lu_type,
+                        str(stacks[0][0]) + ' ' + str(stacks[0][1]),
+                        str(stacks[1][0]) + ' ' + str(stacks[1][1]),
+                        hitters_vs_pitcher,
+                        lu_type
                     )
             elif self.site == "fd":
                 if self.use_contest_data:
@@ -1242,7 +1244,7 @@ class MLB_GPP_Simulator:
                     )
                 else:
                     f.write(
-                        "P,P,C,1B,2B,3B,SS,OF,OF,OF,Fpts Proj,Ceiling,Salary,Win %,Top 10%,Proj. Own. Product,Cash %,Type\n"
+                        "P,P,C,1B,2B,3B,SS,OF,OF,OF,Fpts Proj,Ceiling,Salary,Win %,Top 10%, Proj. Own. Product, Stack1 Type, Stack2 Type, Num Opp Hitters, Lineup Type\n"
                     )
             elif self.site == "fd":
                 if self.use_contest_data:
@@ -1264,7 +1266,7 @@ class MLB_GPP_Simulator:
             ),
         )
         with open(out_path, "w") as f:
-            f.write("Player,Win%,Top10%,Sim. Own%,Proj. Own%,Avg. Return\n")
+            f.write("Player,Position,Team,Win%,Top10%,Sim. Own%,Proj. Own%,Avg. Return\n")
             unique_players = {}
             for val in self.field_lineups.values():
                 for player in val["Lineup"]:
@@ -1296,10 +1298,14 @@ class MLB_GPP_Simulator:
                     if player == v["ID"]:
                         proj_own = v["Ownership"]
                         p_name = v["Name"]
+                        position = "/".join(v.get("Position"))
+                        team = v.get("Team")
                         break
                 f.write(
-                    "{},{}%,{}%,{}%,{}%,${}\n".format(
+                    "{},{},{},{}%,{}%,{}%,{}%,${}\n".format(
                         p_name.replace("#","-"),
+                        position,
+                        team,
                         win_p,
                         top10_p,
                         field_p,
