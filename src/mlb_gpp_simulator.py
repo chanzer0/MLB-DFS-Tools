@@ -106,7 +106,7 @@ class MLB_GPP_Simulator:
         
         elif site == "fd":
             self.roster_construction = ["P", "C/1B", "2B", "3B", "SS", "OF", "OF", "OF", "UTIL"]
-            self.salary = 60000
+            self.salary = 35000
 
         self.use_contest_data = use_contest_data
         if use_contest_data:
@@ -193,15 +193,12 @@ class MLB_GPP_Simulator:
                                  for (player,pos_str,team) in self.player_dict if (self.player_dict[(player, pos_str, team)]['Team'] == team & self.player_dict[(player, pos_str, team)]['Position']!='P')) <= 5
                 
         else:
-            # Need 2 pitchers
+            # Need 1 pitchers
             problem += plp.lpSum(lp_variables[self.player_dict[(player, pos_str, team)]['ID']]
                                  for (player,pos_str,team) in self.player_dict if 'P' in self.player_dict[(player, pos_str, team)]['Position']) == 1
             # Need 1 catcher or first baseman
             problem += plp.lpSum(lp_variables[self.player_dict[(player, pos_str, team)]['ID']]
-                                 for (player,pos_str,team) in self.player_dict if 'C' in self.player_dict[(player, pos_str, team)]['Position']) == 1
-
-            problem += plp.lpSum(lp_variables[self.player_dict[(player, pos_str, team)]['ID']]
-                                 for (player,pos_str,team) in self.player_dict if '1B' in self.player_dict[(player, pos_str, team)]['Position']) == 1
+                                  for (player,pos_str,team) in self.player_dict if 'C/1B' in self.player_dict[(player, pos_str, team)]['Position']) == 1
             # Need 1 second baseman 
             problem += plp.lpSum(lp_variables[self.player_dict[(player, pos_str, team)]['ID']]
                                  for (player,pos_str,team) in self.player_dict if '2B' in self.player_dict[(player, pos_str, team)]['Position']) == 1
@@ -212,19 +209,19 @@ class MLB_GPP_Simulator:
                                  for (player,pos_str,team) in self.player_dict  if 'SS' in self.player_dict[(player, pos_str, team)]['Position']) == 1
             # Need 3 outfielders
             problem += plp.lpSum(lp_variables[self.player_dict[(player, pos_str, team)]['ID']]
-                                 for (player,pos_str,team) in self.player_dict  if 'OF' in self.player_dict[(player, pos_str, team)]
-                                 ['Position'])  == 3
-
-            # Need 1 UTIL 
-            
-            # Can only roster 8 total players
+                                 for (player,pos_str,team) in self.player_dict  if 'OF' in self.player_dict[(player, pos_str, team)]['Position'])  == 3
+             # Need 1 UTIL 
             problem += plp.lpSum(lp_variables[self.player_dict[(player, pos_str, team)]['ID']]
-                                 for (player,pos_str,team) in self.player_dict ) == 10
+                                 for (player,pos_str,team) in self.player_dict  if 'UTIL' in self.player_dict[(player, pos_str, team)]['Position'])  == 1
             
-                        # Max 5 hitters per team
+            # Can only roster 9 total players
+            problem += plp.lpSum(lp_variables[self.player_dict[(player, pos_str, team)]['ID']]
+                                 for (player,pos_str,team) in self.player_dict ) == 9
+            
+                        # Max 4 hitters per team
             for team in self.team_list:
                 problem += plp.lpSum(lp_variables[self.player_dict[(player, pos_str, team)]['ID']]
-                                 for (player,pos_str,team) in self.player_dict  if (self.player_dict[(player, pos_str, team)]['Team'] == team & self.player_dict[(player, pos_str, team)]['Position']!='P')) <= 5
+                                 for (player,pos_str,team) in self.player_dict  if (self.player_dict[(player, pos_str, team)]['Team'] == team & self.player_dict[(player, pos_str, team)]['Position']!='P')) <= 4
                 
        # Crunch!
         try:
@@ -250,11 +247,20 @@ class MLB_GPP_Simulator:
                     row['position'] = 'P'
                 # some players have 2 positions - will be listed like 'PG/SF' or 'PF/C'
                 position = [pos for pos in row['position'].split('/')]
-                if row['teamabbrev'] == 'WSH':
+                if self.site == "fd":
+                    if 'P' not in position:
+                        position.append('UTIL')
+                    if '1B' in position:
+                        position[position.index('1B')] = 'C/1B'
+                    elif 'C' in position:
+                        position[position.index('C')] = 'C/1B'
+                team_key = "teamabbrev" if self.site == "dk" else "team"
+                if row[team_key] == 'WSH':
                     team = 'WAS'
                 else:
-                    team = row['teamabbrev']
-                match =  re.search(pattern='(\w{2,4}@\w{2,4})', string=row['game info'])
+                    team = row[team_key]
+                game_info = "game info" if self.site == "dk" else "game"
+                match =  re.search(pattern='(\w{2,4}@\w{2,4})', string=row[game_info])
                 opp = ''
                 match = match.groups()[0].split('@')
                 for m in match:
@@ -266,7 +272,7 @@ class MLB_GPP_Simulator:
                 pos_str = str(position)
                 if (player_name,pos_str, team) in self.player_dict:
                     self.player_dict[(player_name,pos_str, team)]["ID"] = str(row["id"])
-                    self.player_dict[(player_name,pos_str, team)]["Team"] =  row["teamabbrev"]
+                    self.player_dict[(player_name,pos_str, team)]["Team"] =  row[team_key]
                     self.player_dict[(player_name,pos_str, team)]["Opp"] = opp
                     # Get the opposing pitcher
                     opp_pitcher_key = next(((name, pos_str, opp_team) for name, pos_str, opp_team in self.player_dict if 'P' in pos_str and opp_team == opp), None)
@@ -328,6 +334,13 @@ class MLB_GPP_Simulator:
                 if 'P' in row['pos']:
                     row['pos'] = 'P'
                 position = [pos for pos in row['pos'].split('/')]
+                if self.site == "fd":
+                    if 'P' not in position:
+                        position.append('UTIL')
+                    if '1B' in position:
+                        position[position.index('1B')] = 'C/1B'
+                    elif 'C' in position:
+                        position[position.index('C')] = 'C/1B'
                 if row['team'] == 'WSH':
                     team = 'WAS'
                 else:
@@ -375,6 +388,13 @@ class MLB_GPP_Simulator:
             for row in reader:
                 player_name = row["name"].replace("-", "#").lower()                
                 position = [pos for pos in row['pos'].split('/')]
+                if self.site == "fd":
+                    if 'P' not in position:
+                        position.append('UTIL')
+                    if '1B' in position:
+                        position[position.index('1B')] = 'C/1B'
+                    elif 'C' in position:
+                        position[position.index('C')] = 'C/1B'
                 if row['team'] == 'WSH':
                     team = 'WAS'
                 else:
@@ -391,6 +411,13 @@ class MLB_GPP_Simulator:
                 #print(row)
                 player_name = row["name"].replace("-", "#").lower()                
                 position = [pos for pos in row['pos'].split('/')]
+                if self.site == "fd":
+                    if 'P' not in position:
+                        position.append('UTIL')
+                    if '1B' in position:
+                        position[position.index('1B')] = 'C/1B'
+                    elif 'C' in position:
+                        position[position.index('C')] = 'C/1B'
                 pos_str = str(position)
                 if row['team'] == 'WSH':
                     team = 'WAS'
@@ -471,15 +498,15 @@ class MLB_GPP_Simulator:
                     if i == self.field_size:
                         break
                     lineup = [
-                        str(row[0].split("(")[1].replace(")","")),
-                        str(row[1].split("(")[1].replace(")","")),
-                        str(row[2].split("(")[1].replace(")","")),
-                        str(row[3].split("(")[1].replace(")","")),
-                        str(row[4].split("(")[1].replace(")","")),
-                        str(row[5].split("(")[1].replace(")","")),
-                        str(row[6].split("(")[1].replace(")","")),
-                        str(row[7].split("(")[1].replace(")","")),
-                        str(row[8].split("(")[1].replace(")","")) 
+                        str(row[0].split(":")[0]),
+                        str(row[1].split(":")[0]),
+                        str(row[2].split(":")[0]),
+                        str(row[3].split(":")[0]),
+                        str(row[4].split(":")[0]),
+                        str(row[5].split(":")[0]),
+                        str(row[6].split(":")[0]),
+                        str(row[7].split(":")[0]),
+                        str(row[8].split(":")[0]) 
                     ]
                     # storing if this lineup was made by an optimizer or with the generation process in this script
                     self.field_lineups[i] = {
@@ -600,7 +627,7 @@ class MLB_GPP_Simulator:
                     )
                     if proj >= reasonable_projection:
                         mode = statistics.mode(hitter_teams)
-                        if hitter_teams.count(mode) <= 5:                 
+                        if hitter_teams.count(mode) <= 5:
                             reject = False
                             lus[lu_num] = {
                                 "Lineup": lineup,
@@ -789,6 +816,8 @@ class MLB_GPP_Simulator:
             problems = []
             stacks = np.random.binomial(n=1,p=self.pct_field_using_stacks,size=diff)
             stack_len = np.random.choice(a=[4,5],p=[1-self.pct_5man_stacks, self.pct_5man_stacks],size=diff)
+            if self.site == "fd":
+                stack_len = np.random.choice(a=[3,4],p=[1-self.pct_5man_stacks, self.pct_5man_stacks],size=diff)
             a = list(self.stacks_dict.keys())
             p = np.array(list(self.stacks_dict.values()))
             probs = p/sum(p)
@@ -1170,12 +1199,12 @@ class MLB_GPP_Simulator:
                         x["ROI"] / self.entry_fee / self.num_iterations * 100, 2
                     )
                     roi_round = round(x["ROI"] / self.num_iterations, 2)
-                    lineup_str = "{}:{},{}:{},{}:{},{}:{},{}:{},{}:{},{}:{},{}:{},{}:{},{},{},{},{}%,{}%,{}%,{},${},{}".format(
-                        self.id_name_dict[x["Lineup"][0].replace("-", "#")]["ID"],
+                    lineup_str = "{}:{},{}:{},{}:{},{}:{},{}:{},{}:{},{}:{},{}:{},{}:{},{},{},{},{}%,{}%,{}%,{},${},{},{},{},{}".format(
+                        x["Lineup"][0],
                         lu_names[0].replace("#", "-"),
-                        self.id_name_dict[x["Lineup"][1].replace("-", "#")]["ID"],
+                        x["Lineup"][1],
                         lu_names[1].replace("#", "-"),
-                        self.id_name_dict[x["Lineup"][2].replace("-", "#")]["ID"],
+                        x["Lineup"][2],
                         lu_names[2].replace("#", "-"),
                         x["Lineup"][3],
                         lu_names[3].replace("#", "-"),
@@ -1197,10 +1226,13 @@ class MLB_GPP_Simulator:
                         roi_p,
                         own_p,
                         roi_round,
+                        str(stacks[0][0]) + ' ' + str(stacks[0][1]),
+                        str(stacks[1][0]) + ' ' + str(stacks[1][1]),
+                        hitters_vs_pitcher,
                         lu_type
                     )
                 else:
-                    lineup_str = "{}:{},{}:{},{}:{},{}:{},{}:{},{}:{},{}:{},{}:{},{}:{},{},{},{},{}%,{}%,{},{}%,${},{}".format(
+                    lineup_str = "{}:{},{}:{},{}:{},{}:{},{}:{},{}:{},{}:{},{}:{},{}:{},{},{},{},{}%,{}%,{},{},{},{},{}".format(
                         x["Lineup"][0],
                         lu_names[0].replace("#", "-"),
                         x["Lineup"][1],
@@ -1225,7 +1257,9 @@ class MLB_GPP_Simulator:
                         win_p,
                         top10_p,
                         own_p,
-                        cash_p,
+                        str(stacks[0][0]) + ' ' + str(stacks[0][1]),
+                        str(stacks[1][0]) + ' ' + str(stacks[1][1]),
+                        hitters_vs_pitcher,
                         lu_type
                     )
             unique[index] = lineup_str
@@ -1249,11 +1283,11 @@ class MLB_GPP_Simulator:
             elif self.site == "fd":
                 if self.use_contest_data:
                     f.write(
-                        "P,C/1B,2B,3B,SS,OF,OF,OF,UTIL,Fpts Proj,Ceiling,Salary,Win %,Top 10%,ROI%,Proj. Own. Product,Avg. Return,Type\n"
+                        "P,C/1B,2B,3B,SS,OF,OF,OF,UTIL,Fpts Proj,Ceiling,Salary,Win %,Top 10%,ROI%,Proj. Own. Product,Avg. Return,Stack1 Type,Stack2 Type,Num Opp Hitters,Lineup Type\n"
                     )
                 else:
                     f.write(
-                        "P,C/1B,2B,3B,SS,OF,OF,OF,UTIL,Fpts Proj,Ceiling,Salary,Win %,Top 10%,Proj. Own. Product,Cash %,Type\n"
+                        "P,C/1B,2B,3B,SS,OF,OF,OF,UTIL,Fpts Proj,Ceiling,Salary,Win %,Top 10%,Proj. Own. Product,Stack1 Type,Stack2 Type,Num Opp Hitters,Lineup Type\n"
                     )
 
             for fpts, lineup_str in unique.items():
