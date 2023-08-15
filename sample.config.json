@@ -17,6 +17,6 @@
     "pct_field_using_stacks" : 0.75,  
     "default_hitter_var" : 0.5, 
     "default_pitcher_var" : 0.3,
-    "pct_5man_stacks" : 0.65,
+    "pct_max_stack_len" : 0.65,
     "num_hitters_vs_pitcher" : 0
     }
