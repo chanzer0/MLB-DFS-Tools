@@ -141,7 +141,7 @@ class MLB_GPP_Simulator:
         self.pct_field_using_stacks = float(self.config['pct_field_using_stacks'])
         self.default_hitter_var = float(self.config['default_hitter_var'])
         self.default_pitcher_var = float(self.config['default_pitcher_var'])
-        self.pct_5man_stacks = float(self.config['pct_5man_stacks'])
+        self.pct_max_stack_len = float(self.config['pct_max_stack_len'])
         self.overlap_limit = float(self.config['num_hitters_vs_pitcher'])
 
     # In order to make reasonable tournament lineups, we want to be close enough to the optimal that
@@ -537,7 +537,8 @@ class MLB_GPP_Simulator:
         opponents,
         team_stack,
         stack_len,
-        overlap_limit
+        overlap_limit,
+        max_stack_len
     ):
         # new random seed for each lineup (without this there is a ton of dupes)
         np.random.seed(lu_num)
@@ -627,7 +628,7 @@ class MLB_GPP_Simulator:
                     )
                     if proj >= reasonable_projection:
                         mode = statistics.mode(hitter_teams)
-                        if hitter_teams.count(mode) <= 5:
+                        if hitter_teams.count(mode) <= max_stack_len:
                             reject = False
                             lus[lu_num] = {
                                 "Lineup": lineup,
@@ -754,7 +755,7 @@ class MLB_GPP_Simulator:
                         )
                         if proj >= reasonable_projection:
                             mode = statistics.mode(hitter_teams)
-                            if hitter_teams.count(mode) <= 5:                 
+                            if hitter_teams.count(mode) <= max_stack_len:                 
                                 reject = False
                                 lus[lu_num] = {
                                     "Lineup": lineup,
@@ -815,9 +816,12 @@ class MLB_GPP_Simulator:
             overlap_limit = self.overlap_limit
             problems = []
             stacks = np.random.binomial(n=1,p=self.pct_field_using_stacks,size=diff)
-            stack_len = np.random.choice(a=[4,5],p=[1-self.pct_5man_stacks, self.pct_5man_stacks],size=diff)
             if self.site == "fd":
-                stack_len = np.random.choice(a=[3,4],p=[1-self.pct_5man_stacks, self.pct_5man_stacks],size=diff)
+                stack_len = np.random.choice(a=[3,4],p=[1-self.pct_max_stack_len, self.pct_max_stack_len],size=diff)
+                max_stack_len = 4 
+            else:
+                max_stack_len = 5
+                stack_len = np.random.choice(a=[4,5],p=[1-self.pct_max_stack_len, self.pct_max_stack_len],size=diff)
             a = list(self.stacks_dict.keys())
             p = np.array(list(self.stacks_dict.values()))
             probs = p/sum(p)
@@ -836,7 +840,7 @@ class MLB_GPP_Simulator:
                 #    print(positions[q])
                 #q += 1
             for i in range(diff):
-                lu_tuple = (i, ids, in_lineup, pos_matrix,ownership, salary_floor, salary_ceiling, optimal_score, salaries, projections,max_pct_off_optimal, teams, opponents, stacks[i], stack_len[i], overlap_limit)
+                lu_tuple = (i, ids, in_lineup, pos_matrix,ownership, salary_floor, salary_ceiling, optimal_score, salaries, projections,max_pct_off_optimal, teams, opponents, stacks[i], stack_len[i], overlap_limit, max_stack_len)
                 problems.append(lu_tuple)
             #print(problems[0])
             #print(stacks)
