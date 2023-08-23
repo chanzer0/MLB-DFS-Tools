@@ -569,7 +569,7 @@ class MLB_GPP_Simulator:
             reader = csv.DictReader(self.lower_first(file))
             for row in reader:
                 player_name = row["name"].replace("-", "#").lower()
-                position = [pos for pos in row["pos"].split("/")]
+                position = sorted([pos for pos in row["pos"].split("/")])
                 if self.site == "fd":
                     if "P" not in position:
                         position.append("UTIL")
@@ -594,7 +594,7 @@ class MLB_GPP_Simulator:
             for row in reader:
                 # print(row)
                 player_name = row["name"].replace("-", "#").lower()
-                position = [pos for pos in row["pos"].split("/")]
+                position = sorted([pos for pos in row["pos"].split("/")])
                 if self.site == "fd":
                     if "P" not in position:
                         position.append("UTIL")
