@@ -166,8 +166,8 @@ class MLB_GPP_Simulator:
     # In order to make reasonable tournament lineups, we want to be close enough to the optimal that
     # a person could realistically land on this lineup. Skeleton here is taken from base `mlb_optimizer.py`
     def get_optimal(self):
-        for p, s in self.player_dict.items():
-            print(p, s["ID"])
+        # for p, s in self.player_dict.items():
+        #     print(p, s["ID"])
 
         problem = plp.LpProblem("MLB", plp.LpMaximize)
         lp_variables = {
@@ -395,15 +395,18 @@ class MLB_GPP_Simulator:
 
     # Load player IDs for exporting
     def load_player_ids(self, path):
+        print(self.player_dict)
         with open(path, encoding="utf-8-sig") as file:
             reader = csv.DictReader(self.lower_first(file))
             for row in reader:
                 name_key = "name" if self.site == "dk" else "nickname"
+
                 player_name = row[name_key].replace("-", "#").lower()
+
                 if "P" in row["position"]:
                     row["position"] = "P"
                 # some players have 2 positions - will be listed like 'PG/SF' or 'PF/C'
-                position = [pos for pos in row["position"].split("/")]
+                position = sorted([pos for pos in row["position"].split("/")])
                 if self.site == "fd":
                     if "P" not in position:
                         position.append("UTIL")
@@ -427,8 +430,7 @@ class MLB_GPP_Simulator:
                     if m != team:
                         opp = m
                 pos_str = str(position)
-                # if "carlos" in player_name:
-                #     print(player_name, pos_str, position, team)
+
                 if (player_name, pos_str, team) in self.player_dict:
                     self.player_dict[(player_name, pos_str, team)]["ID"] = str(
                         row["id"]
