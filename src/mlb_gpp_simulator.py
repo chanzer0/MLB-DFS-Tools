@@ -435,9 +435,7 @@ class MLB_GPP_Simulator:
                     self.player_dict[(player_name, pos_str, team)]["ID"] = str(
                         row["id"]
                     )
-                    self.player_dict[(player_name, pos_str, team)]["Team"] = row[
-                        team_key
-                    ]
+                    self.player_dict[(player_name, pos_str, team)]["Team"] = team
                     self.player_dict[(player_name, pos_str, team)]["Opp"] = opp
                     # Get the opposing pitcher
                     opp_pitcher_key = next(
