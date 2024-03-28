@@ -9,29 +9,28 @@ import pulp as plp
 import multiprocessing as mp
 import pandas as pd
 import statistics
-
-# import fuzzywuzzy
 import itertools
 import collections
 import re
-from copulas.multivariate import GaussianMultivariate
-from copulas.univariate import GammaUnivariate, GaussianUnivariate
 import warnings
 from tqdm import tqdm
+import matplotlib.pyplot as plt
+import seaborn as sns
 from scipy.stats import norm, kendalltau, multivariate_normal, gamma
+import numba as nb
 
-# import matplotlib.pyplot as plt
-# import seaborn as sns
+@nb.jit(nopython=True)  # nopython mode ensures the function is fully optimized
+def salary_boost(salary, max_salary):
+    return (salary / max_salary) ** 2
+    
 
 
 class MLB_GPP_Simulator:
     config = None
     player_dict = {}
     field_lineups = {}
-    stacks_dict = {}
     gen_lineup_list = []
     roster_construction = []
-    id_name_dict = {}
     salary = None
     optimal_score = None
     field_size = None
@@ -40,12 +39,20 @@ class MLB_GPP_Simulator:
     site = None
     payout_structure = {}
     use_contest_data = False
+    cut_event = False
     entry_fee = None
     use_lineup_input = None
     projection_minimum = 15
     randomness_amount = 100
     min_lineup_salary = 48000
     max_pct_off_optimal = 0.4
+    seen_lineups = {}
+    seen_lineups_ix = {}
+    game_info = {}
+    matchups = {}
+    allow_opps = False
+    id_name_dict = {}
+    stacks_dict = {}
 
     def __init__(
         self,
@@ -73,18 +80,6 @@ class MLB_GPP_Simulator:
             "../{}_data/{}".format(site, self.config["player_path"]),
         )
         self.load_player_ids(player_path)
-
-        ownership_path = os.path.join(
-            os.path.dirname(__file__),
-            "../{}_data/{}".format(site, self.config["ownership_path"]),
-        )
-        self.load_ownership(ownership_path)
-
-        boom_bust_path = os.path.join(
-            os.path.dirname(__file__),
-            "../{}_data/{}".format(site, self.config["boom_bust_path"]),
-        )
-        self.load_boom_bust(boom_bust_path)
 
         stacks_path = os.path.join(
             os.path.dirname(__file__),
@@ -162,6 +157,9 @@ class MLB_GPP_Simulator:
         self.default_pitcher_var = float(self.config["default_pitcher_var"])
         self.pct_max_stack_len = float(self.config["pct_max_stack_len"])
         self.overlap_limit = float(self.config["num_hitters_vs_pitcher"])
+        self.pct_field_using_secondary_stacks = float(
+            self.config["pct_field_using_secondary_stacks"]
+        )
 
     # In order to make reasonable tournament lineups, we want to be close enough to the optimal that
     # a person could realistically land on this lineup. Skeleton here is taken from base `mlb_optimizer.py`
@@ -183,7 +181,7 @@ class MLB_GPP_Simulator:
         # set the objective - maximize fpts
         problem += (
             plp.lpSum(
-                self.player_dict[(player, pos_str, team)]["Fpts"]
+                self.player_dict[(player, pos_str, team)]["fieldFpts"]
                 * lp_variables[self.player_dict[(player, pos_str, team)]["ID"]]
                 for (player, pos_str, team) in self.player_dict
             ),
@@ -395,7 +393,6 @@ class MLB_GPP_Simulator:
 
     # Load player IDs for exporting
     def load_player_ids(self, path):
-        print(self.player_dict)
         with open(path, encoding="utf-8-sig") as file:
             reader = csv.DictReader(self.lower_first(file))
             for row in reader:
@@ -420,7 +417,8 @@ class MLB_GPP_Simulator:
                 else:
                     team = row[team_key]
                 game_info = "game info" if self.site == "dk" else "game"
-                match = re.search(pattern="(\w{2,4}@\w{2,4})", string=row[game_info])
+                adjusted_pattern = r"(\b\w+@\w+\b)"
+                match = re.search(pattern=adjusted_pattern, string=row[game_info])
                 opp = ""
                 match = match.groups()[0].split("@")
                 for m in match:
@@ -430,6 +428,7 @@ class MLB_GPP_Simulator:
                     if m != team:
                         opp = m
                 pos_str = str(position)
+                print(player_name, opp, team, pos_str)
 
                 if (player_name, pos_str, team) in self.player_dict:
                     self.player_dict[(player_name, pos_str, team)]["ID"] = str(
@@ -437,15 +436,21 @@ class MLB_GPP_Simulator:
                     )
                     self.player_dict[(player_name, pos_str, team)]["Team"] = team
                     self.player_dict[(player_name, pos_str, team)]["Opp"] = opp
-                    # Get the opposing pitcher
-                    opp_pitcher_key = next(
-                        (
-                            (name, pos_str, opp_team)
-                            for name, pos_str, opp_team in self.player_dict
-                            if "P" in pos_str and opp_team == opp
-                        ),
-                        None,
-                    )
+                    # Initialize variables for the highest-scoring pitcher's details
+                    highest_fpts = float('-inf')  # Start with the lowest possible value for comparison
+                    opp_pitcher_key = None  # To store the best pitcher's key (name, pos_str, team)
+
+                    # Iterate over the player_dict
+                    for key, player_data in self.player_dict.items():
+                        opp_name, opp_pos_str, opp_team = key  # Extract key components
+                        # Check if this player is a pitcher for the specified opponent team and has the highest Fpts so far
+                        if "P" in pos_str and team == opp and player_data["Fpts"] > highest_fpts:
+                            highest_fpts = player_data["Fpts"]  # Update the highest Fpts found
+                            opp_pitcher_key = (opp_name, opp_pos_str, opp_team)  # Update the key of the best pitcher found
+                            print("Best pitcher found: ", opp_pitcher_key)
+
+                    # best_pitcher_key now contains the key for the pitcher with the highest Fpts for the specified team, or None if no pitcher was found
+                    #print(self.player_dict)
                     if opp_pitcher_key:
                         self.player_dict[(player_name, pos_str, team)][
                             "Opp Pitcher ID"
@@ -453,7 +458,8 @@ class MLB_GPP_Simulator:
                         self.player_dict[(player_name, pos_str, team)][
                             "Opp Pitcher Name"
                         ] = self.player_dict[opp_pitcher_key]["Name"]
-                self.id_name_dict[str(row["id"])] = row[name_key]
+
+                    self.id_name_dict[str(row["id"])] = row[name_key]
 
     def load_contest_data(self, path):
         with open(path, encoding="utf-8-sig") as file:
@@ -523,6 +529,22 @@ class MLB_GPP_Simulator:
                     order = None
                 else:
                     order = int(row["ord"])
+                fpts = float(row["fpts"])
+                own = float(row['own%'])
+                if own == 0:
+                    own = 0.000001
+                stddev = float(row["stddev"])
+                if stddev == 0:
+                    if 'P' in position:
+                        stddev = fpts * self.default_pitcher_var
+                    else:
+                        stddev = fpts * self.default_hitter_var
+                try:
+                    fieldfpts = float(row["fieldfpts"])
+                except:
+                    fieldfpts = ""
+                if fieldfpts == "":
+                    fieldfpts = fpts
                 player_data = {
                     "Fpts": float(row["fpts"]),
                     "Position": position,
@@ -533,11 +555,12 @@ class MLB_GPP_Simulator:
                     "Opp Pitcher ID": "",
                     "Opp Pitcher Name": "",
                     "Salary": int(row["salary"].replace(",", "")),
-                    "StdDev": 0,
+                    "StdDev": stddev,
                     "Ceiling": 0,
-                    "Ownership": 0.1,
+                    "Ownership": own,
                     "Order": order,  # Handle blank orders
                     "In Lineup": False,
+                    "fieldFpts": fieldfpts
                 }
 
                 # Check if player is in player_dict and get Opp, ID, Opp Pitcher ID and Opp Pitcher Name
@@ -559,59 +582,6 @@ class MLB_GPP_Simulator:
                 self.teams_dict[team].append(
                     player_data
                 )  # Add player data to their respective team
-
-    # Load ownership from file
-    def load_ownership(self, path):
-        # Read ownership into a dictionary
-        with open(path, encoding="utf-8-sig") as file:
-            reader = csv.DictReader(self.lower_first(file))
-            for row in reader:
-                player_name = row["name"].replace("-", "#").lower()
-                position = sorted([pos for pos in row["pos"].split("/")])
-                if self.site == "fd":
-                    if "P" not in position:
-                        position.append("UTIL")
-                    if "1B" in position:
-                        position[position.index("1B")] = "C/1B"
-                    elif "C" in position:
-                        position[position.index("C")] = "C/1B"
-                if row["team"] == "WSH":
-                    team = "WAS"
-                else:
-                    team = row["team"]
-                pos_str = str(position)
-                if (player_name, pos_str, team) in self.player_dict:
-                    self.player_dict[(player_name, pos_str, team)]["Ownership"] = float(
-                        row["own%"]
-                    )
-
-    # Load standard deviations
-    def load_boom_bust(self, path):
-        with open(path, encoding="utf-8-sig") as file:
-            reader = csv.DictReader(self.lower_first(file))
-            for row in reader:
-                # print(row)
-                player_name = row["name"].replace("-", "#").lower()
-                position = sorted([pos for pos in row["pos"].split("/")])
-                if self.site == "fd":
-                    if "P" not in position:
-                        position.append("UTIL")
-                    if "1B" in position:
-                        position[position.index("1B")] = "C/1B"
-                    elif "C" in position:
-                        position[position.index("C")] = "C/1B"
-                pos_str = str(position)
-                if row["team"] == "WSH":
-                    team = "WAS"
-                else:
-                    team = row["team"]
-                if (player_name, pos_str, team) in self.player_dict:
-                    self.player_dict[(player_name, pos_str, team)]["StdDev"] = float(
-                        row["stddev"]
-                    )
-                    self.player_dict[(player_name, pos_str, team)]["Ceiling"] = float(
-                        row["ceiling"]
-                    )
 
     def adjust_default_stdev(self):
         for player_name, pos, team in self.player_dict.keys():
@@ -683,7 +653,7 @@ class MLB_GPP_Simulator:
                     self.field_lineups[i] = {
                         "Lineup": lineup,
                         "Wins": 0,
-                        "Top10": 0,
+                        "Top1Percent": 0,
                         "ROI": 0,
                         "Cashes": 0,
                         "Type": "opto",
@@ -711,7 +681,7 @@ class MLB_GPP_Simulator:
                     self.field_lineups[i] = {
                         "Lineup": lineup,
                         "Wins": 0,
-                        "Top10": 0,
+                        "Top1Percent": 0,
                         "ROI": 0,
                         "Cashes": 0,
                         "Type": "opto",
@@ -738,14 +708,16 @@ class MLB_GPP_Simulator:
         stack_len,
         overlap_limit,
         max_stack_len,
+        secondary_stack
     ):
         # new random seed for each lineup (without this there is a ton of dupes)
-        np.random.seed(lu_num)
+        rng = np.random.Generator(np.random.PCG64())
         lus = {}
         # make sure nobody is already showing up in a lineup
         if sum(in_lineup) != 0:
             in_lineup.fill(0)
         reject = True
+        total_players = pos_matrix.shape[1]
         if pos_matrix.shape[1] == 10:
             num_p_on_roster = 2
         else:
@@ -754,6 +726,7 @@ class MLB_GPP_Simulator:
             if team_stack == "":
                 salary = 0
                 proj = 0
+                remaining_salary = salary_ceiling
                 if sum(in_lineup) != 0:
                     in_lineup.fill(0)
                 lineup = []
@@ -770,11 +743,12 @@ class MLB_GPP_Simulator:
                         # create np array of probability of being seelcted based on ownership and who is eligible at the position
                         prob_list = ownership[valid_players]
                         prob_list = prob_list / prob_list.sum()
-                        choice = np.random.choice(a=plyr_list, p=prob_list)
+                        choice = rng.choice(a=plyr_list, p=prob_list)
                         choice_idx = np.where(ids == choice)[0]
                         lineup.append(str(choice))
                         in_lineup[choice_idx] = 1
                         salary += salaries[choice_idx]
+                        remaining_salary -= salaries[choice_idx]
                         proj += projections[choice_idx]
                         pitcher_opps.append(opponents[choice_idx][0])
                     if k >= num_p_on_roster:
@@ -784,17 +758,51 @@ class MLB_GPP_Simulator:
                         else:
                             p2_opp = "NOT_APPLICABLE"
                         if hitters_opposing_pitcher < overlap_limit:
-                            valid_players = np.where((pos > 0) & (in_lineup == 0))
+                            if k == total_players-1:
+                                valid_players = np.nonzero((pos > 0) & (in_lineup == 0) & (salaries <= remaining_salary) & (salary + salaries >= salary_floor))[0]
+                            else:
+                                valid_players = np.where((pos > 0) & (in_lineup == 0))
                             # grab names of players eligible
                             plyr_list = ids[valid_players]
                             # create np array of probability of being seelcted based on ownership and who is eligible at the position
                             prob_list = ownership[valid_players]
                             prob_list = prob_list / prob_list.sum()
-                            choice = np.random.choice(a=plyr_list, p=prob_list)
+                            if k == total_players - 1:
+                                boosted_salaries = np.array(
+                                    [
+                                        salary_boost(s, salary_ceiling)
+                                        for s in salaries[valid_players]
+                                    ]
+                                )
+                                boosted_probabilities = prob_list * boosted_salaries
+                                boosted_probabilities /= (
+                                    boosted_probabilities.sum()
+                                )  # normalize to ensure it sums to 1
+                            try:
+                                if k == total_players - 1:
+                                    choice = rng.choice(plyr_list, p=boosted_probabilities)
+                                else:
+                                    choice = rng.choice(plyr_list, p=prob_list)
+                            except:
+                                # if remaining_salary <= np.min(salaries):
+                                #     reject_counters["salary_too_high"] += 1
+                                # else:
+                                #     reject_counters["salary_too_low"]
+                                salary = 0
+                                proj = 0
+                                lineup = []
+                                player_teams = []
+                                def_opps = []
+                                players_opposing_def = 0
+                                lineup_matchups = []
+                                in_lineup.fill(0)  # Reset the in_lineup array
+                                k = 0  # Reset the player index
+                                continue  # Skip to the next iteration of the while loop
                             choice_idx = np.where(ids == choice)[0]
                             lineup.append(str(choice))
                             in_lineup[choice_idx] = 1
                             salary += salaries[choice_idx]
+                            remaining_salary -= salaries[choice_idx]
                             proj += projections[choice_idx]
                             hitter_teams.append(teams[choice_idx][0])
                             if teams[choice_idx][0] == p1_opp:
@@ -802,21 +810,55 @@ class MLB_GPP_Simulator:
                             if teams[choice_idx][0] == p2_opp:
                                 hitters_opposing_pitcher += 1
                         else:
-                            valid_players = np.where(
-                                (pos > 0)
-                                & (in_lineup == 0)
-                                & (teams != p1_opp)
-                                & (teams != p2_opp)
-                            )
+                            if k == total_players-1:
+                                valid_players = np.nonzero((pos > 0) & (in_lineup == 0) & (salaries <= remaining_salary) & (salary + salaries >= salary_floor) & (teams != p1_opp) & (teams != p2_opp))[0]
+                            else:
+                                valid_players = np.where(
+                                    (pos > 0)
+                                    & (in_lineup == 0)
+                                    & (teams != p1_opp)
+                                    & (teams != p2_opp)
+                                )
                             plyr_list = ids[valid_players]
                             # create np array of probability of being seelcted based on ownership and who is eligible at the position
                             prob_list = ownership[valid_players]
                             prob_list = prob_list / prob_list.sum()
-                            choice = np.random.choice(a=plyr_list, p=prob_list)
+                            if k == total_players - 1:
+                                boosted_salaries = np.array(
+                                    [
+                                        salary_boost(s, salary_ceiling)
+                                        for s in salaries[valid_players]
+                                    ]
+                                )
+                                boosted_probabilities = prob_list * boosted_salaries
+                                boosted_probabilities /= (
+                                    boosted_probabilities.sum()
+                                )  # normalize to ensure it sums to 1
+                            try:
+                                if k == total_players - 1:
+                                    choice = rng.choice(plyr_list, p=boosted_probabilities)
+                                else:
+                                    choice = rng.choice(plyr_list, p=prob_list)
+                            except:
+                                # if remaining_salary <= np.min(salaries):
+                                #     reject_counters["salary_too_high"] += 1
+                                # else:
+                                #     reject_counters["salary_too_low"]
+                                salary = 0
+                                proj = 0
+                                lineup = []
+                                player_teams = []
+                                def_opps = []
+                                players_opposing_def = 0
+                                lineup_matchups = []
+                                in_lineup.fill(0)  # Reset the in_lineup array
+                                k = 0  # Reset the player index
+                                continue  # Skip to the next iteration of the while loop
                             choice_idx = np.where(ids == choice)[0]
                             lineup.append(str(choice))
                             in_lineup[choice_idx] = 1
                             salary += salaries[choice_idx]
+                            remaining_salary -= salaries[choice_idx]
                             proj += projections[choice_idx]
                             hitter_teams.append(teams[choice_idx][0])
                             if teams[choice_idx][0] == p1_opp:
@@ -834,15 +876,17 @@ class MLB_GPP_Simulator:
                         mode = statistics.mode(hitter_teams)
                         if hitter_teams.count(mode) <= max_stack_len:
                             reject = False
-                            lus[lu_num] = {
+                            lu = {
                                 "Lineup": lineup,
                                 "Wins": 0,
-                                "Top10": 0,
+                                "Top1Percent": 0,
                                 "ROI": 0,
                                 "Cashes": 0,
                                 "Type": "generated_nostack",
+                                "Count": 0
                             }
             else:
+                remaining_salary = salary_ceiling
                 salary = 0
                 proj = 0
                 if sum(in_lineup) != 0:
@@ -861,8 +905,9 @@ class MLB_GPP_Simulator:
                 plyr_list = ids[valid_players]
                 prob_list = ownership[valid_players]
                 prob_list = prob_list / prob_list.sum()
+                stack_2 = True
                 while stack:
-                    choices = np.random.choice(
+                    choices = rng.choice(
                         a=plyr_list, p=prob_list, size=stack_len, replace=False
                     )
                     lineup = np.zeros(shape=pos_matrix.shape[1]).astype(str)
@@ -884,6 +929,38 @@ class MLB_GPP_Simulator:
                         team_stack_len += stack_len
                         x = 0
                         stack = False
+                if secondary_stack != "" and team_stack != "":
+                    secondary_stack_len = 0
+                    stack_2 = True
+                    valid_team_2 = np.where(teams == secondary_stack)[0]
+                    valid_players_2 = np.unique(
+                        valid_team_2[np.where(pos_matrix[valid_team_2, 2:] > 0)[0]]
+                    )
+                    plyr_list_2 = ids[valid_players_2]
+                    prob_list_2 = ownership[valid_players_2]
+                    prob_list_2 = prob_list_2 / prob_list_2.sum()
+
+                    while stack_2:
+                        choices_2 = rng.choice(
+                            a=plyr_list_2, p=prob_list_2, size=secondary_stack_len, replace=False
+                        )
+                        plyr_stack_indices_2 = np.where(np.in1d(ids, choices_2))[0]
+                        x = 0
+                        for p in plyr_stack_indices_2:
+                            if "0.0" in lineup[np.where(p > 0)[0]]:
+                                for l in np.where(pos_matrix[p] > 0)[0]:
+                                    if lineup[l] == "0.0":
+                                        lineup[l] = ids[p]
+                                        x += 1
+                                        break
+                        if x == secondary_stack_len:
+                            in_lineup[plyr_stack_indices_2] = 1
+                            salary += sum(salaries[plyr_stack_indices_2])
+                            proj += sum(projections[plyr_stack_indices_2])
+                            secondary_stack_len += secondary_stack_len
+                            x = 0
+                            stack_2 = False
+
                 for ix, (l, pos) in enumerate(zip(lineup, pos_matrix.T)):
                     # get pitchers irrespective of stack
                     #                    print(lu_num,ix, l, pos, k, lineup)
@@ -898,7 +975,37 @@ class MLB_GPP_Simulator:
                             prob_list = ownership[valid_players]
                             prob_list = prob_list / prob_list.sum()
                             # try:
-                            choice = np.random.choice(a=plyr_list, p=prob_list)
+                            if k == total_players - 1:
+                                boosted_salaries = np.array(
+                                    [
+                                        salary_boost(s, salary_ceiling)
+                                        for s in salaries[valid_players]
+                                    ]
+                                )
+                                boosted_probabilities = prob_list * boosted_salaries
+                                boosted_probabilities /= (
+                                    boosted_probabilities.sum()
+                                )  # normalize to ensure it sums to 1
+                            try:
+                                if k == total_players - 1:
+                                    choice = rng.choice(plyr_list, p=boosted_probabilities)
+                                else:
+                                    choice = rng.choice(plyr_list, p=prob_list)
+                            except:
+                                # if remaining_salary <= np.min(salaries):
+                                #     reject_counters["salary_too_high"] += 1
+                                # else:
+                                #     reject_counters["salary_too_low"]
+                                salary = 0
+                                proj = 0
+                                lineup = []
+                                player_teams = []
+                                def_opps = []
+                                players_opposing_def = 0
+                                lineup_matchups = []
+                                in_lineup.fill(0)  # Reset the in_lineup array
+                                k = 0  # Reset the player index
+                                continue  # Skip to the next iteration of the while loop
                             # except:
                             #    print(k, pos)
                             choice_idx = np.where(ids == choice)[0]
@@ -914,16 +1021,47 @@ class MLB_GPP_Simulator:
                                 p2_opp = pitcher_opps[1]
                             else:
                                 p2_opp = "NOT_APPLICABLE"
-                            if hitters_opposing_pitcher < overlap_limit:
-                                valid_players = np.where(
-                                    (pos > 0) & (in_lineup == 0) & (teams != team_stack)
-                                )
+                            if hitters_opposing_pitcher < overlap_limit:                        
+                                if k == total_players-1:
+                                    valid_players = np.nonzero((pos > 0) & (in_lineup == 0) & (salaries <= remaining_salary) & (salary + salaries >= salary_floor))[0]
+                                else:
+                                    valid_players = np.nonzero((pos > 0) & (in_lineup == 0) & (salaries <= remaining_salary))[0]
                                 # grab names of players eligible
                                 plyr_list = ids[valid_players]
                                 # create np array of probability of being seelcted based on ownership and who is eligible at the position
                                 prob_list = ownership[valid_players]
                                 prob_list = prob_list / prob_list.sum()
-                                choice = np.random.choice(a=plyr_list, p=prob_list)
+                                if k == total_players - 1:
+                                    boosted_salaries = np.array(
+                                        [
+                                            salary_boost(s, salary_ceiling)
+                                            for s in salaries[valid_players]
+                                        ]
+                                    )
+                                    boosted_probabilities = prob_list * boosted_salaries
+                                    boosted_probabilities /= (
+                                        boosted_probabilities.sum()
+                                    )  # normalize to ensure it sums to 1
+                                try:
+                                    if k == total_players - 1:
+                                        choice = rng.choice(plyr_list, p=boosted_probabilities)
+                                    else:
+                                        choice = rng.choice(plyr_list, p=prob_list)
+                                except:
+                                    # if remaining_salary <= np.min(salaries):
+                                    #     reject_counters["salary_too_high"] += 1
+                                    # else:
+                                    #     reject_counters["salary_too_low"]
+                                    salary = 0
+                                    proj = 0
+                                    lineup = []
+                                    player_teams = []
+                                    def_opps = []
+                                    players_opposing_def = 0
+                                    lineup_matchups = []
+                                    in_lineup.fill(0)  # Reset the in_lineup array
+                                    k = 0  # Reset the player index
+                                    continue  # Skip to the next iteration of the while loop
                                 choice_idx = np.where(ids == choice)[0]
                                 lineup[ix] = str(choice)
                                 in_lineup[choice_idx] = 1
@@ -937,18 +1075,54 @@ class MLB_GPP_Simulator:
                                 if teams[choice_idx][0] == team_stack:
                                     team_stack_len += 1
                             else:
-                                valid_players = np.where(
-                                    (pos > 0)
-                                    & (in_lineup == 0)
-                                    & (teams != p1_opp)
-                                    & (teams != p2_opp)
-                                    & (teams != team_stack)
-                                )
+                                if k == total_players-1:
+                                    try:
+                                        valid_players = np.nonzero((pos > 0) & (in_lineup == 0) & (salaries <= remaining_salary) & (salary + salaries >= salary_floor) & (teams != p1_opp) & (teams != p2_opp) & (teams != team_stack))[0]
+                                    except:
+                                        print(f'Error: {pos} {in_lineup} {salaries} {remaining_salary} {salary} {salary_floor} {p1_opp} {p2_opp} {team_stack}')
+                                else:
+                                    valid_players = np.where(
+                                        (pos > 0)
+                                        & (in_lineup == 0)
+                                        & (teams != p1_opp)
+                                        & (teams != p2_opp)
+                                        & (teams != team_stack)
+                                    )
                                 plyr_list = ids[valid_players]
                                 # create np array of probability of being seelcted based on ownership and who is eligible at the position
                                 prob_list = ownership[valid_players]
                                 prob_list = prob_list / prob_list.sum()
-                                choice = np.random.choice(a=plyr_list, p=prob_list)
+                                if k == total_players - 1:
+                                    boosted_salaries = np.array(
+                                        [
+                                            salary_boost(s, salary_ceiling)
+                                            for s in salaries[valid_players]
+                                        ]
+                                    )
+                                    boosted_probabilities = prob_list * boosted_salaries
+                                    boosted_probabilities /= (
+                                        boosted_probabilities.sum()
+                                    )  # normalize to ensure it sums to 1
+                                try:
+                                    if k == total_players - 1:
+                                        choice = rng.choice(plyr_list, p=boosted_probabilities)
+                                    else:
+                                        choice = rng.choice(plyr_list, p=prob_list)
+                                except:
+                                    # if remaining_salary <= np.min(salaries):
+                                    #     reject_counters["salary_too_high"] += 1
+                                    # else:
+                                    #     reject_counters["salary_too_low"]
+                                    salary = 0
+                                    proj = 0
+                                    lineup = []
+                                    player_teams = []
+                                    def_opps = []
+                                    players_opposing_def = 0
+                                    lineup_matchups = []
+                                    in_lineup.fill(0)  # Reset the in_lineup array
+                                    k = 0  # Reset the player index
+                                    continue  # Skip to the next iteration of the while loop
                                 choice_idx = np.where(ids == choice)[0]
                                 lineup[ix] = str(choice)
                                 in_lineup[choice_idx] = 1
@@ -964,10 +1138,10 @@ class MLB_GPP_Simulator:
                             k += 1
                     else:
                         k += 1
-                # Must have a reasonable salary
+                # Must have a reasonable salary    if team_stack_len >= stack_len and (secondary_stack_len == 0 or secondary_stack_len >= secondary_stack_len):
+
                 if team_stack_len >= stack_len:
                     if salary >= salary_floor and salary <= salary_ceiling:
-                        # loosening reasonable projection constraint for team stacks
                         reasonable_projection = optimal_score - (
                             (max_pct_off_optimal * 1.25) * optimal_score
                         )
@@ -975,15 +1149,16 @@ class MLB_GPP_Simulator:
                             mode = statistics.mode(hitter_teams)
                             if hitter_teams.count(mode) <= max_stack_len:
                                 reject = False
-                                lus[lu_num] = {
+                                lu = {
                                     "Lineup": lineup,
                                     "Wins": 0,
-                                    "Top10": 0,
+                                    "Top1Percent": 0,
                                     "ROI": 0,
                                     "Cashes": 0,
                                     "Type": "generated_stack",
+                                    "Count": 0
                                 }
-        return lus
+        return lu
 
     def generate_field_lineups(self):
         diff = self.field_size - len(self.field_lineups)
@@ -1061,6 +1236,28 @@ class MLB_GPP_Simulator:
                     stacks[i] = choice[0]
                 else:
                     stacks[i] = ""
+            secondary_stacks = np.random.binomial(n=1, p=self.pct_field_using_secondary_stacks, size=diff)
+            if self.site == "fd":
+                secondary_stack_len = np.random.choice(
+                    a=[2, 3],  # Adjust the range as needed
+                    size=diff,
+                )
+                max_secondary_stack_len = 3  # Adjust as needed
+            else:
+                max_secondary_stack_len = 3  # Adjust as needed
+                secondary_stack_len = np.random.choice(
+                    a=[2, 3],  # Adjust the range as needed
+                    size=diff,
+                )
+            secondary_stacks = secondary_stacks.astype(str)
+
+            for i in range(len(secondary_stacks)):
+                if secondary_stacks[i] == "1":
+                    secondary_choice = random.choices(a, weights=probs, k=1)
+                    secondary_stacks[i] = secondary_choice[0]
+                else:
+                    secondary_stacks[i] = ""
+            
             # creating tuples of the above np arrays plus which lineup number we are going to create
             # q = 0
             # for k in self.player_dict.keys():
@@ -1087,6 +1284,7 @@ class MLB_GPP_Simulator:
                     stack_len[i],
                     overlap_limit,
                     max_stack_len,
+                    secondary_stacks[i]
                 )
                 problems.append(lu_tuple)
             # print(problems[0])
@@ -1102,22 +1300,48 @@ class MLB_GPP_Simulator:
                 )
                 pool.close()
                 pool.join()
-            if len(self.field_lineups) == 0:
-                new_keys = list(range(0, self.field_size))
+                print("pool closed")
+                self.update_field_lineups(output, diff)
+                msg = str(diff) + " field lineups successfully generated. " + str(len(self.field_lineups.keys())) + " uniques."
+                end_time = time.time()
+                #self.simDoc.update({'jobProgressLog': ArrayUnion([msg])})
+                print("lineups took " + str(end_time - start_time) + " seconds")
+                # print(self.field_lineups)
+
+        # print(self.field_lineups)
+    def update_field_lineups(self, output, diff):
+        if len(self.field_lineups) == 0:
+            new_keys = list(range(0, self.field_size))
+        else:
+            new_keys = list(range(max(self.field_lineups.keys()) + 1, max(self.field_lineups.keys()) + 1 + diff))
+        nk = new_keys[0]
+        for i, o in enumerate(output):
+            #print(o.values())
+            lineup_list = sorted(o['Lineup'])
+            lineup_set = frozenset(lineup_list)
+            #print(lineup_set)
+
+            # Keeping track of lineup duplication counts
+            if lineup_set in self.seen_lineups:
+                self.seen_lineups[lineup_set] += 1
+                        
+                # Increase the count in field_lineups using the index stored in seen_lineups_ix
+                self.field_lineups[self.seen_lineups_ix[lineup_set]]["Count"] += 1
             else:
-                new_keys = list(
-                    range(max(self.field_lineups.keys()) + 1, self.field_size)
-                )
-            nk = new_keys[0]
-            for i, o in enumerate(output):
+                self.seen_lineups[lineup_set] = 1
+                
                 if nk in self.field_lineups.keys():
                     print("bad lineups dict, please check dk_data files")
-                self.field_lineups[nk] = o[i]
-                nk += 1
-            end_time = time.time()
-            print("lineups took " + str(end_time - start_time) + " seconds")
-            print(str(diff) + " field lineups successfully generated")
-            # print(self.field_lineups)
+                else:
+                    # Convert dict_values to a dictionary before assignment
+                    lineup_data = dict(o)
+                    lineup_data['Count'] += self.seen_lineups[lineup_set]
+
+                    # Now assign the dictionary to the field_lineups
+                    self.field_lineups[nk] = lineup_data                 
+                    # Store the new nk in seen_lineups_ix for quick access in the future
+                    self.seen_lineups_ix[lineup_set] = nk
+                    nk += 1
 
     def calc_gamma(self, mean, sd):
         alpha = (mean / sd) ** 2
@@ -1394,7 +1618,7 @@ class MLB_GPP_Simulator:
         # sns.heatmap(correlation_matrix, annot=True, ax=ax2, cmap='YlGnBu', cbar_kws={"shrink": .5})
         # ax2.set_title(f'Correlation Matrix for Team {team_id}', fontsize=14)
 
-        # plt.savefig(f'../output/Team_{team_id}_Distributions_Correlation.png', bbox_inches='tight')
+        # plt.savefig(f'output/simulation_plots/Team_{team_id}_Distributions_Correlation.png', bbox_inches='tight')
         # plt.close()
 
         temp_fpts_dict = {}
@@ -1405,6 +1629,40 @@ class MLB_GPP_Simulator:
 
         return temp_fpts_dict
 
+    @staticmethod
+    @nb.jit(nopython=True)
+    def calculate_payouts(args):
+        (
+            ranks,
+            payout_array,
+            entry_fee,
+            field_lineup_keys,
+            use_contest_data,
+            field_lineups_count,
+        ) = args
+        num_lineups = len(field_lineup_keys)
+        combined_result_array = np.zeros(num_lineups)
+
+        payout_cumsum = np.cumsum(payout_array)
+
+        for r in range(ranks.shape[1]):
+            ranks_in_sim = ranks[:, r]
+            payout_index = 0
+            for lineup_index in ranks_in_sim:
+                lineup_count = field_lineups_count[lineup_index]
+                prize_for_lineup = (
+                    (
+                        payout_cumsum[payout_index + lineup_count - 1]
+                        - payout_cumsum[payout_index - 1]
+                    )
+                    / lineup_count
+                    if payout_index != 0
+                    else payout_cumsum[payout_index + lineup_count - 1] / lineup_count
+                )
+                combined_result_array[lineup_index] += prize_for_lineup
+                payout_index += lineup_count
+        return combined_result_array
+       
     def run_tournament_simulation(self):
         print("Running " + str(self.num_iterations) + " simulations")
 
@@ -1423,9 +1681,45 @@ class MLB_GPP_Simulator:
         for res in results:
             temp_fpts_dict.update(res)
 
-        # generate arrays for every sim result for each player in the lineup and sum
-        fpts_array = np.zeros(shape=(self.field_size, self.num_iterations))
+        fpts_array = np.zeros(shape=(len(self.field_lineups), self.num_iterations))
         # converting payout structure into an np friendly format, could probably just do this in the load contest function
+        # print(self.field_lineups)
+        # print(temp_fpts_dict)
+        # print(payout_array)
+        # print(self.player_dict[('patrick mahomes', 'FLEX', 'KC')])
+        field_lineups_count = np.array(
+            [self.field_lineups[idx]["Count"] for idx in self.field_lineups.keys()]
+        )
+
+        #set self.player_dict to use player ids as keys
+        self.player_dict = {v["ID"]: v for v in self.player_dict.values()}
+
+        for index, values in self.field_lineups.items():
+            try:
+                fpts_sim = sum([temp_fpts_dict[player] for player in values["Lineup"]])
+            except KeyError:
+                for player in values["Lineup"]:
+                    if player not in temp_fpts_dict.keys():
+                        print(player)
+                        # for k,v in self.player_dict.items():
+                        # if v['ID'] == player:
+                        #        print(k,v)
+                # print('cant find player in sim dict', values["Lineup"], temp_fpts_dict.keys())
+            # store lineup fpts sum in 2d np array where index (row) corresponds to index of field_lineups and columns are the fpts from each sim
+            fpts_array[index] = fpts_sim
+
+        fpts_array = fpts_array.astype(np.float16)
+        # ranks = np.argsort(fpts_array, axis=0)[::-1].astype(np.uint16)
+        ranks = np.argsort(-fpts_array, axis=0).astype(np.uint32)
+
+        # count wins, top 10s vectorized
+        wins, win_counts = np.unique(ranks[0, :], return_counts=True)
+        cashes, cash_counts = np.unique(ranks[0:len(list(self.payout_structure.values()))], return_counts=True)
+
+        top1pct, top1pct_counts = np.unique(
+            ranks[0 : math.ceil(0.01 * len(self.field_lineups)), :], return_counts=True
+        )
+
         payout_array = np.array(list(self.payout_structure.values()))
         # subtract entry fee
         payout_array = payout_array - self.entry_fee
@@ -1433,26 +1727,52 @@ class MLB_GPP_Simulator:
             shape=self.field_size - len(payout_array), fill_value=-self.entry_fee
         )
         payout_array = np.concatenate((payout_array, l_array))
-        for index, values in self.field_lineups.items():
-            fpts_sim = sum([temp_fpts_dict[player] for player in values["Lineup"]])
-            # store lineup fpts sum in 2d np array where index (row) corresponds to index of field_lineups and columns are the fpts from each sim
-            fpts_array[index] = fpts_sim
-        ranks = np.argsort(fpts_array, axis=0)[::-1]
-        # count wins, top 10s vectorized
-        wins, win_counts = np.unique(ranks[0, :], return_counts=True)
-        t10, t10_counts = np.unique(ranks[0:9:], return_counts=True)
-        roi = payout_array[np.argsort(ranks, axis=0)].sum(axis=1)
-        # summing up ach lineup, probably a way to v)ectorize this too (maybe just turning the field dict into an array too)
+        field_lineups_keys_array = np.array(list(self.field_lineups.keys()))
+
+        # Adjusted ROI calculation
+        # print(field_lineups_count.shape, payout_array.shape, ranks.shape, fpts_array.shape)
+
+        # Split the simulation indices into chunks
+        field_lineups_keys_array = np.array(list(self.field_lineups.keys()))
+
+        chunk_size = self.num_iterations // 16  # Adjust chunk size as needed
+        simulation_chunks = [
+            (
+                ranks[:, i : min(i + chunk_size, self.num_iterations)].copy(),
+                payout_array,
+                self.entry_fee,
+                field_lineups_keys_array,
+                self.use_contest_data,
+                field_lineups_count,
+            )  # Adding field_lineups_count here
+            for i in range(0, self.num_iterations, chunk_size)
+        ]
+
+        # Use the pool to process the chunks in parallel
+        with mp.Pool() as pool:
+            results = pool.map(self.calculate_payouts, simulation_chunks)
+
+        combined_result_array = np.sum(results, axis=0)
+
+        total_sum = 0
+        index_to_key = list(self.field_lineups.keys())
+        for idx, roi in enumerate(combined_result_array):
+            lineup_key = index_to_key[idx]
+            lineup_count = self.field_lineups[lineup_key][
+                "Count"
+            ]  # Assuming "Count" holds the count of the lineups
+            total_sum += roi * lineup_count
+            self.field_lineups[lineup_key]["ROI"] += roi
+
         for idx in self.field_lineups.keys():
-            # Winning
             if idx in wins:
                 self.field_lineups[idx]["Wins"] += win_counts[np.where(wins == idx)][0]
-            # Top 10
-            if idx in t10:
-                self.field_lineups[idx]["Top10"] += t10_counts[np.where(t10 == idx)][0]
-            # can't figure out how to get roi for each lineup index without iterating and iterating is slow
-            if self.use_contest_data:
-                self.field_lineups[idx]["ROI"] += roi[idx]
+            if idx in top1pct:
+                self.field_lineups[idx]["Top1Percent"] += top1pct_counts[
+                    np.where(top1pct == idx)
+                ][0]
+            if idx in cashes:
+                self.field_lineups[idx]["Cashes"] += cash_counts[np.where(cashes == idx)][0]
         end_time = time.time()
         diff = end_time - start_time
         print(
@@ -1461,6 +1781,7 @@ class MLB_GPP_Simulator:
             + str(diff)
             + "seconds. Outputting."
         )
+        msg = str(self.num_iterations) + " Tournament simulations finished in " + str(round(diff, 2)) + " seconds. Outputting."
 
     def output(self):
         unique = {}
@@ -1475,28 +1796,26 @@ class MLB_GPP_Simulator:
             hitters_vs_pitcher = 0
             pitcher_opps = []
             for id in x["Lineup"]:
-                for k, v in self.player_dict.items():
-                    if v["ID"] == id:
-                        if "P" in v["Position"]:
+                v = self.player_dict[id]
+                if "P" in v["Position"]:
                             pitcher_opps.append(v["Opp"])
             for id in x["Lineup"]:
-                for k, v in self.player_dict.items():
-                    if v["ID"] == id:
-                        salary += v["Salary"]
-                        fpts_p += v["Fpts"]
-                        ceil_p += v["Ceiling"]
-                        own_p.append(v["Ownership"] / 100)
-                        lu_names.append(v["Name"])
-                        if "P" not in v["Position"]:
-                            lu_teams.append(v["Team"])
-                            if v["Team"] in pitcher_opps:
-                                hitters_vs_pitcher += 1
-                        continue
+                v = self.player_dict[id]
+                salary += v["Salary"]
+                fpts_p += v["Fpts"]
+                ceil_p += v["Ceiling"]
+                own_p.append(v["Ownership"] / 100)
+                lu_names.append(v["Name"])
+                if "P" not in v["Position"]:
+                    lu_teams.append(v["Team"])
+                    if v["Team"] in pitcher_opps:
+                        hitters_vs_pitcher += 1
+                continue
             counter = collections.Counter(lu_teams)
             stacks = counter.most_common(2)
             own_p = np.prod(own_p)
             win_p = round(x["Wins"] / self.num_iterations * 100, 2)
-            top10_p = round(x["Top10"] / self.num_iterations * 100, 2)
+            Top1Percent_p = round(x["Top1Percent"] / self.num_iterations * 100, 2)
             cash_p = round(x["Cashes"] / self.num_iterations * 100, 2)
             lu_type = x["Type"]
             if self.site == "dk":
@@ -1530,7 +1849,7 @@ class MLB_GPP_Simulator:
                         ceil_p,
                         salary,
                         win_p,
-                        top10_p,
+                        Top1Percent_p,
                         roi_p,
                         own_p,
                         roi_round,
@@ -1565,7 +1884,7 @@ class MLB_GPP_Simulator:
                         ceil_p,
                         salary,
                         win_p,
-                        top10_p,
+                        Top1Percent_p,
                         own_p,
                         str(stacks[0][0]) + " " + str(stacks[0][1]),
                         str(stacks[1][0]) + " " + str(stacks[1][1]),
@@ -1601,7 +1920,7 @@ class MLB_GPP_Simulator:
                         ceil_p,
                         salary,
                         win_p,
-                        top10_p,
+                        Top1Percent_p,
                         roi_p,
                         own_p,
                         roi_round,
@@ -1634,7 +1953,7 @@ class MLB_GPP_Simulator:
                         ceil_p,
                         salary,
                         win_p,
-                        top10_p,
+                        Top1Percent_p,
                         own_p,
                         str(stacks[0][0]) + " " + str(stacks[0][1]),
                         str(stacks[1][0]) + " " + str(stacks[1][1]),
@@ -1678,53 +1997,43 @@ class MLB_GPP_Simulator:
                 self.site, self.field_size, self.num_iterations
             ),
         )
-        with open(out_path, "w") as f:
-            f.write(
-                "Player,Position,Team,Win%,Top10%,Sim. Own%,Proj. Own%,Avg. Return\n"
-            )
-            unique_players = {}
-            for val in self.field_lineups.values():
-                for player in val["Lineup"]:
-                    if player not in unique_players:
-                        unique_players[player] = {
-                            "Wins": val["Wins"],
-                            "Top10": val["Top10"],
-                            "In": 1,
-                            "ROI": val["ROI"],
-                        }
-                    else:
-                        unique_players[player]["Wins"] = (
-                            unique_players[player]["Wins"] + val["Wins"]
-                        )
-                        unique_players[player]["Top10"] = (
-                            unique_players[player]["Top10"] + val["Top10"]
-                        )
-                        unique_players[player]["In"] = unique_players[player]["In"] + 1
-                        unique_players[player]["ROI"] = (
-                            unique_players[player]["ROI"] + val["ROI"]
-                        )
+        # Initialize all player data
+        unique_players = {player: {"Wins": 0, "Top1Percent": 0, "In": 0, "ROI": 0, "Cashes": 0} for player in self.player_dict}
 
+        # Loop over all lineups and their outcomes once to aggregate player data
+        for val in self.field_lineups.values():
+            lineup_players = val["Lineup"]
+            for player in lineup_players:
+                unique_players[player]["In"] += val['Count']
+                unique_players[player]["ROI"] += val["ROI"]
+                unique_players[player]["Cashes"] += val["Cashes"]
+                
+                # Only increment Wins and Top1Percent if the lineup has them
+                if val['Wins'] > 0:
+                    unique_players[player]["Wins"] += val['Wins']  # Distribute the win among the players in the lineup
+                if val['Top1Percent'] > 0:
+                    unique_players[player]["Top1Percent"] += val['Top1Percent']   # Distribute the top 1% finish among the players in the lineup
+
+        # Write the aggregated data to the output file
+        with open(out_path, "w") as f:
+            f.write("Player,Win%,Top1%,Cash%,Sim. Own%,Proj. Own%,Avg. Return\n")
+            
             for player, data in unique_players.items():
-                field_p = round(data["In"] / self.field_size * 100, 2)
-                win_p = round(data["Wins"] / self.num_iterations * 100, 2)
-                top10_p = round(data["Top10"] / self.num_iterations / 10 * 100, 2)
-                roi_p = round(data["ROI"] / data["In"] / self.num_iterations, 2)
-                for k, v in self.player_dict.items():
-                    if player == v["ID"]:
-                        proj_own = v["Ownership"]
-                        p_name = v["Name"]
-                        position = "/".join(v.get("Position"))
-                        team = v.get("Team")
-                        break
+                win_p = round(data["Wins"] / self.num_iterations * 100, 4)
+                Top1Percent_p = round(data["Top1Percent"] / self.num_iterations * 100, 4)
+                cash_p = round(data["Cashes"] / data["In"] / self.num_iterations * 100, 4)
+                roi_p = round(data["ROI"] / data["In"] / self.num_iterations, 4)
+                field_p = round(data["In"] / self.field_size * 100, 4)
+                proj_own = self.player_dict[player]["Ownership"]*100
+                
                 f.write(
-                    "{},{},{},{}%,{}%,{}%,{}%,${}\n".format(
-                        p_name.replace("#", "-"),
-                        position,
-                        team,
+                    "{},{}%,{}%,{}%,{}%,{}%,${}\n".format(
+                        self.player_dict[player]['Name'].replace("#", "-"),
                         win_p,
-                        top10_p,
+                        Top1Percent_p,
+                        cash_p,
                         field_p,
-                        proj_own,
+                        proj_own/100,
                         roi_p,
                     )
                 )
