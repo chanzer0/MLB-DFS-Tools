@@ -12,7 +12,7 @@
     },
     "at_most": {
     },
-    "min_lineup_salary": 34000,
+    "min_lineup_salary": 48000,
     "max_pct_off_optimal": 0.3,
     "pct_field_using_stacks" : 0.75,  
     "default_hitter_var" : 0.5, 
