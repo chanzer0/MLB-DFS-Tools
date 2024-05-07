@@ -797,7 +797,6 @@ class MLB_GPP_Simulator:
         chosen_id = ids[chosen_index]
 
         return chosen_id, salaries[chosen_index], projections[chosen_index]
-
         
     @staticmethod
     def is_valid_lineup(lineup, salary, projection, salary_floor, salary_ceiling, optimal_score, max_pct_off_optimal, isStack):
@@ -1030,6 +1029,7 @@ class MLB_GPP_Simulator:
         probabilities = [self.stacks_dict[team] for team in teams]
         total_prob = sum(probabilities)
         probabilities = [p / total_prob for p in probabilities]
+        num_hitters_per_lineup = len([pos for pos in self.roster_construction if pos != 'P'])
 
         team_average_salaries, average_pitcher_salary, average_hitter_salary = self.calculate_average_salaries()
         primary_teams = []
@@ -1047,8 +1047,10 @@ class MLB_GPP_Simulator:
                 primary_lens.append(0)
 
             if primary_teams[-1] and np.random.rand() < self.pct_field_using_secondary_stacks:
+                #use primary_stack_len to set secondary_stack_len
+                max_secondary_stack_len = num_hitters_per_lineup - primary_lens[-1]
                 available_teams = [team for team in teams if team != primary_teams[-1]]
-                secondary_stack_len = np.random.choice([2, 3], p=[0.5, 0.5])
+                secondary_stack_len = np.random.choice([max_secondary_stack_len-1,max_secondary_stack_len], p=[0.5,0.5])
                 filtered_teams = []
                 for team in available_teams:
                     # Check financial feasibility
