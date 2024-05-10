@@ -710,66 +710,59 @@ class MLB_GPP_Simulator:
             "../{}_data/{}".format(self.site, "tournament_lineups.csv"),
         )
         with open(path) as file:
-            if self.site == "dk":
-                reader = pd.read_csv(file)
-                lineup = []
-                for i, row in reader.iterrows():
-                    # print(row)
-                    if i == self.field_size:
-                        break
-                    lineup = [
-                        str(row[0].split("(")[1].replace(")", "")),
-                        str(row[1].split("(")[1].replace(")", "")),
-                        str(row[2].split("(")[1].replace(")", "")),
-                        str(row[3].split("(")[1].replace(")", "")),
-                        str(row[4].split("(")[1].replace(")", "")),
-                        str(row[5].split("(")[1].replace(")", "")),
-                        str(row[6].split("(")[1].replace(")", "")),
-                        str(row[7].split("(")[1].replace(")", "")),
-                        str(row[8].split("(")[1].replace(")", "")),
-                        str(row[9].split("(")[1].replace(")", "")),
-                    ]
-                    # storing if this lineup was made by an optimizer or with the generation process in this script
-                    self.field_lineups[i] = {
-                        "Lineup": lineup,
-                        "Wins": 0,
-                        "Top1Percent": 0,
-                        "ROI": 0,
-                        "Cashes": 0,
-                        "Type": "opto",
-                        "Count": 0
-                    }
-                    i += 1
-            elif self.site == "fd":
-                reader = pd.read_csv(file)
-                lineup = []
-                for i, row in reader.iterrows():
-                    # print(row)
-                    if i == self.field_size:
-                        break
-                    lineup = [
-                        str(row[0].split(":")[0]),
-                        str(row[1].split(":")[0]),
-                        str(row[2].split(":")[0]),
-                        str(row[3].split(":")[0]),
-                        str(row[4].split(":")[0]),
-                        str(row[5].split(":")[0]),
-                        str(row[6].split(":")[0]),
-                        str(row[7].split(":")[0]),
-                        str(row[8].split(":")[0]),
-                    ]
-                    # storing if this lineup was made by an optimizer or with the generation process in this script
-                    self.field_lineups[i] = {
-                        "Lineup": lineup,
-                        "Wins": 0,
-                        "Top1Percent": 0,
-                        "ROI": 0,
-                        "Cashes": 0,
-                        "Type": "opto",
-                        "Count": 0
-                    }
-                    i += 1
+            reader = pd.read_csv(file)
+            lineup = []
+            bad_lus = []
+            bad_players = []
+            j = 0
+            for i, row in reader.iterrows():
+                if i == self.field_size:
+                    break
+                lineup = [
+                    self.extract_id(str(row[q]))
+                    for q in range(len(self.roster_construction))
+                ]
+                # storing if this lineup was made by an optimizer or with the generation process in this script
+                error = False
+                for l in lineup:
+                    ids = [self.player_dict[k]["ID"] for k in self.player_dict]
+                    if l not in ids:
+                        print("player id {} in lineup {} not found in player dict".format(l, i))
+                        if l in self.id_name_dict:
+                            print(self.id_name_dict[l])
+                        bad_players.append(l)
+                        error = True
+                if len(lineup) < len(self.roster_construction):
+                    print("lineup {} doesn't match roster construction size".format(i))
+                    continue
+                # storing if this lineup was made by an optimizer or with the generation process in this script
+                error = False
+                if not error:
+                    lineup_list = sorted(lineup)           
+                    lineup_set = frozenset(lineup_list)
+
+                    # Keeping track of lineup duplication counts
+                    if lineup_set in self.seen_lineups:
+                        self.seen_lineups[lineup_set] += 1
+                    else:
+                        self.field_lineups[j] = {
+                            "Lineup": lineup,
+                            "Wins": 0,
+                            "Top1Percent": 0,
+                            "ROI": 0,
+                            "Cashes": 0,
+                            "Type": "opto",
+                            "Count": 1,
+                        }
+
+                        # Add to seen_lineups and seen_lineups_ix
+                        self.seen_lineups[lineup_set] = 1
+                        self.seen_lineups_ix[lineup_set] = j
+
+                        j += 1
+        print("loaded {} lineups".format(j))
         # print(self.field_lineups)
+
 
     @staticmethod
     def select_player(position, ids, in_lineup, pos_matrix, ownership, salaries, projections, remaining_salary, salary_floor, rng, roster_positions, team_counts, max_hitters_per_team, teams, overlap_limit, opponents, pitcher_opps, salary_ceiling, num_players_remaining):
