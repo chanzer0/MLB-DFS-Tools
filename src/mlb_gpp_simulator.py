@@ -34,6 +34,52 @@ def create_dummy_pitcher():
         "Position": ["P"],
     }
 
+def format_lineup_dk(lu_names, lineup, fpts_p, ceil_p, salary, win_p, Top1Percent_p, roi_p, own_p, roi_round, stacks, hitters_vs_pitcher, lu_type, simDupes):
+    return "{} ({}),{} ({}),{} ({}),{} ({}),{} ({}),{} ({}),{} ({}),{} ({}),{} ({}),{} ({}),{},{},${},{}%,{}%,{}%,{},${},{},{},{},{},{}".format(
+        lu_names[0].replace("#", "-"), lineup[0],
+        lu_names[1].replace("#", "-"), lineup[1],
+        lu_names[2].replace("#", "-"), lineup[2],
+        lu_names[3].replace("#", "-"), lineup[3],
+        lu_names[4].replace("#", "-"), lineup[4],
+        lu_names[5].replace("#", "-"), lineup[5],
+        lu_names[6].replace("#", "-"), lineup[6],
+        lu_names[7].replace("#", "-"), lineup[7],
+        lu_names[8].replace("#", "-"), lineup[8],
+        lu_names[9].replace("#", "-"), lineup[9],
+        fpts_p, ceil_p, salary, win_p, Top1Percent_p, roi_p, own_p, roi_round,
+        str(stacks[0][0]) + " " + str(stacks[0][1]),
+        str(stacks[1][0]) + " " + str(stacks[1][1]),
+        hitters_vs_pitcher, lu_type, simDupes
+    )
+
+def format_lineup_fd(lu_names, lineup, fpts_p, ceil_p, salary, win_p, Top1Percent_p, roi_p, own_p, roi_round, stacks, hitters_vs_pitcher, lu_type, simDupes):
+    return "{}:{},{}:{},{}:{},{}:{},{}:{},{}:{},{}:{},{}:{},{}:{},{},{},{},{}%,{}%,{}%,{},${},{},{},{},{},{}".format(
+        lineup[0], lu_names[0].replace("#", "-"),
+        lineup[1], lu_names[1].replace("#", "-"),
+        lineup[2], lu_names[2].replace("#", "-"),
+        lineup[3], lu_names[3].replace("#", "-"),
+        lineup[4], lu_names[4].replace("#", "-"),
+        lineup[5], lu_names[5].replace("#", "-"),
+        lineup[6], lu_names[6].replace("#", "-"),
+        lineup[7], lu_names[7].replace("#", "-"),
+        lineup[8], lu_names[8].replace("#", "-"),
+        fpts_p, ceil_p, salary, win_p, Top1Percent_p, roi_p, own_p, roi_round,
+        str(stacks[0][0]) + " " + str(stacks[0][1]),
+        str(stacks[1][0]) + " " + str(stacks[1][1]),
+        hitters_vs_pitcher, lu_type, simDupes
+    )
+
+def format_lineup_ikb(lu_names, lineup, fpts_p, ceil_p, salary, win_p, Top1Percent_p, roi_p, own_p, roi_round, stacks, hitters_vs_pitcher, lu_type, simDupes):
+    return "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},${},{}%,{}%,{}%,${},${},{},{},{},{},{}".format(
+        lineup[0], lineup[1], lineup[2], lineup[3], lineup[4], lineup[5], lineup[6], lineup[7], lineup[8], lineup[9],
+        lu_names[0].replace("#", "-"), lu_names[1].replace("#", "-"), lu_names[2].replace("#", "-"), lu_names[3].replace("#", "-"),
+        lu_names[4].replace("#", "-"), lu_names[5].replace("#", "-"), lu_names[6].replace("#", "-"), lu_names[7].replace("#", "-"),
+        lu_names[8].replace("#", "-"), lu_names[9].replace("#", "-"),
+        fpts_p, ceil_p, salary, win_p, Top1Percent_p, roi_p, own_p, roi_round,
+        str(stacks[0][0]) + " " + str(stacks[0][1]), str(stacks[1][0]) + " " + str(stacks[1][1]),
+        hitters_vs_pitcher, lu_type, simDupes
+    )
+
 class MLB_GPP_Simulator:
     config = None
     player_dict = {}
@@ -136,6 +182,33 @@ class MLB_GPP_Simulator:
             self.salary = 35000
             self.max_hitters_per_team = 4
             self.roster_positions = ['P', 'C/1B', '2B', '3B', 'SS', 'OF1', 'OF2', 'OF3', 'UTIL']
+        
+        elif site == "ikb":
+            self.roster_construction = [
+                "P",
+                "P",
+                "UTIL",
+                "UTIL",
+                "UTIL",
+                "UTIL",
+                "UTIL",
+                "UTIL",
+                "UTIL",
+                "UTIL",
+            ]
+            self.salary = 50000
+            self.max_hitters_per_team = 5
+            self.roster_positions = [                
+                "P1",
+                "P2",
+                "UTIL1",
+                "UTIL2",
+                "UTIL3",
+                "UTIL4",
+                "UTIL5",
+                "UTIL6",
+                "UTIL7",
+                "UTIL8",]            
 
         self.use_contest_data = use_contest_data
         if use_contest_data:
@@ -152,6 +225,7 @@ class MLB_GPP_Simulator:
 
         self.adjust_default_stdev()
         self.num_iterations = int(num_iterations)
+        print(self.player_dict)
         self.get_optimal()
         self.fill_teams_dict() # Fill the teams_dict with player data
         self.player_dict = {str(v["ID"]): v for v in self.player_dict.values()}
@@ -182,8 +256,8 @@ class MLB_GPP_Simulator:
     # In order to make reasonable tournament lineups, we want to be close enough to the optimal that
     # a person could realistically land on this lineup. Skeleton here is taken from base `mlb_optimizer.py`
     def get_optimal(self):
-        # for p, s in self.player_dict.items():
-        #     print(p, s["ID"])
+        for p, s in self.player_dict.items():
+            print(p, s["ID"])
 
         problem = plp.LpProblem("MLB", plp.LpMaximize)
         lp_variables = {
@@ -304,7 +378,7 @@ class MLB_GPP_Simulator:
                     <= 5
                 )
 
-        else:
+        elif self.site == 'fd':
             # Need 1 pitchers
             problem += (
                 plp.lpSum(
@@ -392,6 +466,50 @@ class MLB_GPP_Simulator:
                     )
                     <= 4
                 )
+        elif self.site == 'ikb':
+            # Need 1 pitchers
+            problem += (
+                plp.lpSum(
+                    lp_variables[self.player_dict[(player, pos_str, team)]["ID"]]
+                    for (player, pos_str, team) in self.player_dict
+                    if "P" in self.player_dict[(player, pos_str, team)]["Position"]
+                )
+                == 2
+            )
+            # Need 1 UTIL
+            problem += (
+                plp.lpSum(
+                    lp_variables[self.player_dict[(player, pos_str, team)]["ID"]]
+                    for (player, pos_str, team) in self.player_dict
+                    if "UTIL" in self.player_dict[(player, pos_str, team)]["Position"]
+                )
+                == 8
+            )
+
+            # Can only roster 10 total players
+            problem += (
+                plp.lpSum(
+                    lp_variables[self.player_dict[(player, pos_str, team)]["ID"]]
+                    for (player, pos_str, team) in self.player_dict
+                )
+                == 10
+            )
+
+            # Max 5 hitters per team
+            for team in self.team_list:
+                problem += (
+                    plp.lpSum(
+                        lp_variables[self.player_dict[(player, pos_str, team)]["ID"]]
+                        for (player, pos_str, team) in self.player_dict
+                        if (
+                            self.player_dict[(player, pos_str, team)]["Team"]
+                            == team
+                            & self.player_dict[(player, pos_str, team)]["Position"]
+                            != "P"
+                        )
+                    )
+                    <= 5
+                )            
 
         # Crunch!
         try:
@@ -414,8 +532,12 @@ class MLB_GPP_Simulator:
         with open(path, encoding="utf-8-sig") as file:
             reader = csv.DictReader(self.lower_first(file))
             for row in reader:
-                name_key = "name" if self.site == "dk" else "nickname"
-
+                if self.site == "dk":
+                    name_key = "name"
+                elif self.site == "fd":
+                    name_key = "nickname"
+                elif self.site == "ikb":
+                    name_key = "name"
                 player_name = row[name_key].replace("-", "#").lower()
 
                 if "P" in row["position"]:
@@ -429,12 +551,27 @@ class MLB_GPP_Simulator:
                         position[position.index("1B")] = "C/1B"
                     elif "C" in position:
                         position[position.index("C")] = "C/1B"
+                if self.site == "ikb":
+                    if "P" not in position:
+                        position.append("UTIL")      
                 team_key = "teamabbrev" if self.site == "dk" else "team"
+                if self.site == "dk":
+                    team_key = "teamabbrev"
+                elif self.site == "fd":
+                    team_key = "team"
+                elif self.site == "ikb":
+                    team_key = "teamabbrev"
                 if row[team_key] == "WSH":
                     team = "WAS"
                 else:
                     team = row[team_key]
                 game_info = "game info" if self.site == "dk" else "game"
+                if self.site == "dk":
+                    game_info = "game info"
+                elif self.site == "fd":
+                    game_info = "game"
+                elif self.site == "ikb":
+                    game_info = "game info"
                 adjusted_pattern = r"(\b\w+@\w+\b)"
                 match = re.search(pattern=adjusted_pattern, string=row[game_info])
                 opp = ""
@@ -563,6 +700,9 @@ class MLB_GPP_Simulator:
                         position[position.index("1B")] = "C/1B"
                     elif "C" in position:
                         position[position.index("C")] = "C/1B"
+                if self.site == "ikb":
+                    if "P" not in position:
+                        position.append("UTIL")                    
                 if row["team"] == "WSH":
                     team = "WAS"
                 else:
@@ -1242,15 +1382,15 @@ class MLB_GPP_Simulator:
     ):
         rng = np.random.Generator(np.random.PCG64())  # Create a new Generator instance
         existing_correlation_matrix = np.array([
-        [1., 0.1855827, 0.17517424, 0.17516216, 0.17520923, 0.14935001, 0.15884211, 0.15799072, 0.16467186],
-        [0.1855827, 1., 0.20226615, 0.15774969, 0.14370335, 0.14275675, 0.13338755, 0.13081362, 0.16291087],
-        [0.17517424, 0.20226615, 1., 0.17394293, 0.16980602, 0.15196324, 0.14008804, 0.13916134, 0.14359494],
-        [0.17516216, 0.15774969, 0.17394293, 1., 0.19942615, 0.17285594, 0.15883667, 0.12021929, 0.13140383],
-        [0.17520923, 0.14370335, 0.16980602, 0.19942615, 1., 0.18785418, 0.1794043, 0.14219216, 0.12337999],
-        [0.14935001, 0.14275675, 0.15196324, 0.17285594, 0.18785418, 1., 0.18722286, 0.14811003, 0.13624325],
-        [0.15884211, 0.13338755, 0.14008804, 0.15883667, 0.1794043, 0.18722286, 1., 0.18284259, 0.15515191],
-        [0.15799072, 0.13081362, 0.13916134, 0.12021929, 0.14219216, 0.14811003, 0.18284259, 1., 0.168358],
-        [0.16467186, 0.16291087, 0.14359494, 0.13140383, 0.12337999, 0.13624325, 0.15515191, 0.168358, 1.]
+            [1., 0.1855827, 0.17517424, 0.17516216, 0.17520923, 0.14935001, 0.15884211, 0.15799072, 0.16467186],
+            [0.1855827, 1., 0.20226615, 0.15774969, 0.14370335, 0.14275675, 0.13338755, 0.13081362, 0.16291087],
+            [0.17517424, 0.20226615, 1., 0.17394293, 0.16980602, 0.15196324, 0.14008804, 0.13916134, 0.14359494],
+            [0.17516216, 0.15774969, 0.17394293, 1., 0.19942615, 0.17285594, 0.15883667, 0.12021929, 0.13140383],
+            [0.17520923, 0.14370335, 0.16980602, 0.19942615, 1., 0.18785418, 0.1794043, 0.14219216, 0.12337999],
+            [0.14935001, 0.14275675, 0.15196324, 0.17285594, 0.18785418, 1., 0.18722286, 0.14811003, 0.13624325],
+            [0.15884211, 0.13338755, 0.14008804, 0.15883667, 0.1794043, 0.18722286, 1., 0.18284259, 0.15515191],
+            [0.15799072, 0.13081362, 0.13916134, 0.12021929, 0.14219216, 0.14811003, 0.18284259, 1., 0.168358],
+            [0.16467186, 0.16291087, 0.14359494, 0.13140383, 0.12337999, 0.13624325, 0.15515191, 0.168358, 1.]
         ])
 
         # Initialize an 11x11 matrix
@@ -1277,8 +1417,6 @@ class MLB_GPP_Simulator:
         D = np.diag(std_devs)  # Create a diagonal matrix with the standard deviations
         covariance_matrix = np.dot(D, np.dot(correlation_matrix, D))
 
-        #print(f'starting game simulation for team {team_id} and {opp_pitcher_ids.get(team_id, None)}')
-        # print(covariance_matrix)
         try:
             team = sorted(
                 team,
@@ -1289,21 +1427,18 @@ class MLB_GPP_Simulator:
             print('unable to find batting order for team', team_id)
             for player in team:
                 print(player)
-        #print(team)
+
         hitters_tuple_keys = [
             player for player in team if "P" not in player["Position"] and player['battingOrder'] != 'NS' and player['battingOrder'] != '-'
         ]
         try:
-            # Check if there are players assigned as pitchers in the team
             pitchers = [player for player in team if "P" in player["Position"]]
             if pitchers:
-                pitcher_tuple_key = pitchers[0]  # Assuming the first pitcher is what we want
+                pitcher_tuple_key = pitchers[0]
             else:
-                # No pitchers found, use a dummy pitcher
                 pitcher_tuple_key = create_dummy_pitcher()
                 print(f"No valid pitcher found for team {team_id}. Using dummy pitcher: {pitcher_tuple_key['Name']}.")
 
-            # Ensure the pitcher is in the samples dictionary
             if pitcher_tuple_key["ID"] not in pitcher_samples_dict:
                 pitcher_samples = rng.normal(
                     loc=pitcher_tuple_key["Fpts"], scale=pitcher_tuple_key["StdDev"], size=num_iterations
@@ -1321,28 +1456,14 @@ class MLB_GPP_Simulator:
 
         size = num_iterations
 
-        # check if P has been simmed
-        # if pitcher_tuple_key["ID"] not in pitcher_samples_dict:
-        #     pitcher_samples = rng.normal(
-        #         loc=pitcher_fpts, scale=pitcher_stddev, size=size
-        #     )
-        #     pitcher_samples_dict[pitcher_tuple_key["ID"]] = pitcher_samples
-        # else:
-        #     pitcher_samples = pitcher_samples_dict[pitcher_tuple_key["ID"]]
-
-        # look up the Opp Pitcher ID in team_dict
-            
         opposing_pitcher_id = opp_pitcher_ids.get(team_id, None)
-        
         if opposing_pitcher_id and opposing_pitcher_id in player_dict:
             opposing_pitcher = player_dict[opposing_pitcher_id]
         else:
-            # No valid opposing pitcher found, use a dummy pitcher
             opposing_pitcher = create_dummy_pitcher()
             opposing_pitcher_id = opposing_pitcher['ID']
             print(f"No valid opposing pitcher found for team {team_id}. Using dummy pitcher.")
-        
-        # Ensure the pitcher is in the samples dictionary
+
         if opposing_pitcher_id not in pitcher_samples_dict:
             opposing_pitcher_fpts = opposing_pitcher["Fpts"]
             opposing_pitcher_stddev = opposing_pitcher["StdDev"]
@@ -1351,59 +1472,77 @@ class MLB_GPP_Simulator:
             )
             pitcher_samples_dict[opposing_pitcher_id] = opposing_pitcher_samples
 
+        hitters_params = [(fpts, stddev) for fpts, stddev in zip(hitters_fpts, hitters_stddev)]
 
-        hitters_params = [
-            (fpts, stddev) for fpts, stddev in zip(hitters_fpts, hitters_stddev)
-        ]
-        
         pitcher_params = (pitcher_fpts, pitcher_stddev)
         try:
             opposing_pitcher_params = (opposing_pitcher_fpts, opposing_pitcher_stddev)
         except:
-            print(f'missing opposing pitcher data for team {team_id}')
+            print(f'Missing opposing pitcher data for team {team_id}')
 
-
+        # Generate correlated normal samples
         multi_normal = multivariate_normal(mean=[0] * 11, cov=covariance_matrix)
+        normal_samples = multi_normal.rvs(size=num_iterations)
+        
+        # Transform normal samples to the Gamma distribution
+        def transform_to_gamma(samples, means, stddevs, max_stddev_multiplier):
+            gamma_samples = np.zeros_like(samples)
+            for i in range(samples.shape[1]):
+                mean = means[i]
+                stddev = stddevs[i]
+                shape = max((mean / stddev) ** 2, 0.1)  # Cap the shape parameter to a minimum value
+                scale = stddev ** 2 / mean
+                
+                # Debugging: Print shape and scale parameters
+                #print(f"Player {i}: mean={mean}, stddev={stddev}, shape={shape}, scale={scale}")
+                
+                transformed_samples = gamma.ppf(norm.cdf(samples[:, i]), shape, scale=scale)
+                
+                # Replace infinite values with a value 3 standard deviations above the mean
+                max_value = mean + max_stddev_multiplier * stddev
+                transformed_samples = np.where(np.isinf(transformed_samples), max_value, transformed_samples)
+                
+                # Count the number of infinite values
+                inf_count = np.isinf(transformed_samples).sum()
+                total_count = len(transformed_samples)
+                #print(f"Player {i}: {inf_count} out of {total_count} samples are inf ({inf_count / total_count:.2%})")
+                
+                gamma_samples[:, i] = transformed_samples
+            return gamma_samples
 
-        samples = multi_normal.rvs(size=num_iterations)
+        hitters_gamma_samples = transform_to_gamma(normal_samples[:, :9], hitters_fpts, hitters_stddev, 2.5)
 
-        uniform_samples = norm.cdf(samples)
+        # For pitchers, keep normal distribution as per your existing code
+        pitcher_samples = normal_samples[:, 9] * pitcher_stddev + pitcher_fpts
+        opposing_pitcher_samples = normal_samples[:, 10] * opposing_pitcher_stddev + opposing_pitcher_fpts
 
-        cap = 60
-        max_attempts = 1000
+        # Combine all samples for correlation calculation
+        all_samples = np.hstack((hitters_gamma_samples, pitcher_samples[:, np.newaxis], opposing_pitcher_samples[:, np.newaxis]))
 
-        hitters_samples = []
-        for u, params in zip(uniform_samples.T, hitters_params):
-            attempts = 0
-            sample = gamma.ppf(u, *params)
-            # If sample is an array, apply check and adjustment for each value
-            if isinstance(sample, np.ndarray):
-                for i, s in enumerate(sample):
-                    while s > cap and attempts < max_attempts:
-                        u = rng.uniform()  # Generate a new uniform random number
-                        s = gamma.ppf(u, *params)
-                        attempts += 1
-                    if attempts == max_attempts:
-                        s = params[0]  # If max attempts are reached, set sample to 0
-                    sample[i] = s
-            hitters_samples.append(sample)
+        # print("NaNs in all_samples:", np.isnan(all_samples).sum())
+        # print("Infs in all_samples:", np.isinf(all_samples).sum())
 
-        pitcher_samples = norm.ppf(uniform_samples.T[-2], *pitcher_params)
+        # Replace infinite values with a large finite number
+        all_samples = np.where(np.isinf(all_samples), np.nan, all_samples)
 
-        opposing_pitcher_samples = norm.ppf(
-            uniform_samples.T[-1], *opposing_pitcher_params
-        )
-        #print('samples completed for team', team_id)
+        # Calculate the correlation matrix
+        correlation_matrix = np.corrcoef(all_samples.T, rowvar=True)
 
+        #print("NaNs in correlation_matrix:", np.isnan(correlation_matrix).sum())
+
+        # Create DataFrame for the correlation matrix
+        # player_names = [f"{player['Name']} ({player['battingOrder']})" if player['battingOrder'] is not None else f"{player['Name']} (P)" for player in hitters_tuple_keys] + [f"{pitcher_tuple_key['Name']} (P)", f"{opposing_pitcher['Name']} (Opp P)"]
+        # correlation_df = pd.DataFrame(correlation_matrix, columns=player_names, index=player_names)
+
+        # # Plotting the distributions
         # fig, (ax1, ax2) = plt.subplots(2, figsize=(10, 15))
         # fig.tight_layout(pad=5.0)
 
         # for i, hitter in enumerate(hitters_tuple_keys):
-        #     sns.kdeplot(hitters_samples[i], ax=ax1, label=hitter['Name'])
+        #     sns.kdeplot(hitters_gamma_samples[:, i], ax=ax1, label=hitter['Name'])
 
         # sns.kdeplot(pitcher_samples, ax=ax1, label=pitcher_tuple_key['Name'], linestyle='--')
-
-        # sns.kdeplot(opposing_pitcher_samples, ax=ax1, label = opposing_pitcher['Name'] + " (Opp)", linestyle=':')
+        # sns.kdeplot(opposing_pitcher_samples, ax=ax1, label=opposing_pitcher['Name'] + " (Opp)", linestyle=':')
 
         # ax1.legend(loc='upper right', fontsize=14)
         # ax1.set_xlabel('Fpts', fontsize=14)
@@ -1412,24 +1551,11 @@ class MLB_GPP_Simulator:
         # ax1.tick_params(axis='both', which='both', labelsize=14)
 
         # y_min, y_max = ax1.get_ylim()
-        # ax1.set_ylim(y_min, y_max*1.1)
+        # ax1.set_ylim(y_min, y_max * 1.1)
 
         # ax1.set_xlim(-5, 70)
 
-        # # Sorting players and correlating their data
-        # player_order = [player['Order'] if player['Order'] is not None else float('inf') for player in hitters_tuple_keys] + [1000, float('inf')]
-        # player_names = [f"{player['Name']} ({player['Order']})" if player['Order'] is not None else f"{player['Name']} (P)" for player in hitters_tuple_keys] + [f"{pitcher_tuple_key['Name']} (P)", f"{opposing_pitcher['Name']} (Opp P)"]
-        # samples_order = [hitters_samples[i] for i in range(len(hitters_samples))] + [pitcher_samples, opposing_pitcher_samples]
-        # sorted_samples = [x for _, x in sorted(zip(player_order, samples_order))]
-
-        # # Ensuring the data is correctly structured as a 2D array
-        # sorted_samples_array = np.array(sorted_samples)
-        # if sorted_samples_array.shape[0] < sorted_samples_array.shape[1]:
-        #     sorted_samples_array = sorted_samples_array.T
-
-        # correlation_matrix = pd.DataFrame(np.corrcoef(sorted_samples_array.T), columns=player_names, index=player_names)
-
-        # sns.heatmap(correlation_matrix, annot=True, ax=ax2, cmap='YlGnBu', cbar_kws={"shrink": .5})
+        # sns.heatmap(correlation_df, annot=True, ax=ax2, cmap='YlGnBu', cbar_kws={"shrink": .5})
         # ax2.set_title(f'Correlation Matrix for Team {team_id}', fontsize=14)
 
         # plt.savefig(f'output/simulation_plots/Team_{team_id}_Distributions_Correlation.png', bbox_inches='tight')
@@ -1437,11 +1563,9 @@ class MLB_GPP_Simulator:
 
         temp_fpts_dict = {}
         for i, hitter in enumerate(hitters_tuple_keys):
-            temp_fpts_dict[str(hitter["ID"])] = hitters_samples[i]
+            temp_fpts_dict[str(hitter["ID"])] = hitters_gamma_samples[:, i]
 
-        if pitcher_tuple_key["ID"] == 'dummy':
-            pass
-        else:
+        if pitcher_tuple_key["ID"] != 'dummy':
             temp_fpts_dict[str(pitcher_tuple_key["ID"])] = pitcher_samples
 
         return temp_fpts_dict
@@ -1598,21 +1722,14 @@ class MLB_GPP_Simulator:
     def output(self):
         unique = {}
         for index, x in self.field_lineups.items():
-            # print(x)
-            salary = 0
-            fpts_p = 0
-            ceil_p = 0
-            own_p = []
-            lu_names = []
-            lu_teams = []
-            hitters_vs_pitcher = 0
-            pitcher_opps = []
+            salary, fpts_p, ceil_p = 0, 0, 0
+            own_p, lu_names, lu_teams = [], [], []
+            hitters_vs_pitcher, pitcher_opps = 0, []
+
             for id in x["Lineup"]:
                 v = self.player_dict[id]
                 if "P" in v["Position"]:
                     pitcher_opps.append(v["Opp"])
-            for id in x["Lineup"]:
-                v = self.player_dict[id]
                 salary += v["Salary"]
                 fpts_p += v["Fpts"]
                 ceil_p += v["Ceiling"]
@@ -1622,7 +1739,7 @@ class MLB_GPP_Simulator:
                     lu_teams.append(v["Team"])
                     if v["Team"] in pitcher_opps:
                         hitters_vs_pitcher += 1
-                continue
+
             counter = collections.Counter(lu_teams)
             stacks = counter.most_common(2)
             if len(stacks) == 1:
@@ -1633,154 +1750,25 @@ class MLB_GPP_Simulator:
             cash_p = round(x["Cashes"] / self.num_iterations * 100, 2)
             lu_type = x["Type"]
             simDupes = x['Count']
+            roi_p, roi_round = None, None
+
+            if self.use_contest_data:
+                roi_p = round(x["ROI"] / self.entry_fee / self.num_iterations * 100, 2)
+                roi_round = round(x["ROI"] / self.num_iterations, 2)
+
             if self.site == "dk":
-                if self.use_contest_data:
-                    roi_p = round(
-                        x["ROI"] / self.entry_fee / self.num_iterations * 100, 2
-                    )
-                    roi_round = round(x["ROI"] / self.num_iterations, 2)
-                    lineup_str = "{} ({}),{} ({}),{} ({}),{} ({}),{} ({}),{} ({}),{} ({}),{} ({}),{} ({}),{} ({}),{},{},${},{}%,{}%,{}%,{},${},{},{},{},{},{}".format(
-                        lu_names[0].replace("#", "-"),
-                        x["Lineup"][0],
-                        lu_names[1].replace("#", "-"),
-                        x["Lineup"][1],
-                        lu_names[2].replace("#", "-"),
-                        x["Lineup"][2],
-                        lu_names[3].replace("#", "-"),
-                        x["Lineup"][3],
-                        lu_names[4].replace("#", "-"),
-                        x["Lineup"][4],
-                        lu_names[5].replace("#", "-"),
-                        x["Lineup"][5],
-                        lu_names[6].replace("#", "-"),
-                        x["Lineup"][6],
-                        lu_names[7].replace("#", "-"),
-                        x["Lineup"][7],
-                        lu_names[8].replace("#", "-"),
-                        x["Lineup"][8],
-                        lu_names[9].replace("#", "-"),
-                        x["Lineup"][9],
-                        fpts_p,
-                        ceil_p,
-                        salary,
-                        win_p,
-                        Top1Percent_p,
-                        roi_p,
-                        own_p,
-                        roi_round,
-                        str(stacks[0][0]) + " " + str(stacks[0][1]),
-                        str(stacks[1][0]) + " " + str(stacks[1][1]),
-                        hitters_vs_pitcher,
-                        lu_type,
-                        simDupes
-                    )
-                else:
-                    lineup_str = "{} ({}),{} ({}),{} ({}),{} ({}),{} ({}),{} ({}),{} ({}),{} ({}),{} ({}),{} ({}),{},{},{},{}%,{}%,{}%,{},{},{},{},{}".format(
-                        lu_names[0].replace("#", "-"),
-                        x["Lineup"][0],
-                        lu_names[1].replace("#", "-"),
-                        x["Lineup"][1],
-                        lu_names[2].replace("#", "-"),
-                        x["Lineup"][2],
-                        lu_names[3].replace("#", "-"),
-                        x["Lineup"][3],
-                        lu_names[4].replace("#", "-"),
-                        x["Lineup"][4],
-                        lu_names[5].replace("#", "-"),
-                        x["Lineup"][5],
-                        lu_names[6].replace("#", "-"),
-                        x["Lineup"][6],
-                        lu_names[7].replace("#", "-"),
-                        x["Lineup"][7],
-                        lu_names[8].replace("#", "-"),
-                        x["Lineup"][8],
-                        lu_names[9].replace("#", "-"),
-                        x["Lineup"][9],
-                        fpts_p,
-                        ceil_p,
-                        salary,
-                        win_p,
-                        Top1Percent_p,
-                        own_p,
-                        str(stacks[0][0]) + " " + str(stacks[0][1]),
-                        str(stacks[1][0]) + " " + str(stacks[1][1]),
-                        hitters_vs_pitcher,
-                        lu_type,
-                        simDupes
-                    )
+                lineup_str = format_lineup_dk(lu_names, x["Lineup"], fpts_p, ceil_p, salary, win_p, Top1Percent_p, roi_p, own_p, roi_round, stacks, hitters_vs_pitcher, lu_type, simDupes)
             elif self.site == "fd":
-                if self.use_contest_data:
-                    roi_p = round(
-                        x["ROI"] / self.entry_fee / self.num_iterations * 100, 2
-                    )
-                    roi_round = round(x["ROI"] / self.num_iterations, 2)
-                    lineup_str = "{}:{},{}:{},{}:{},{}:{},{}:{},{}:{},{}:{},{}:{},{}:{},{},{},{},{}%,{}%,{}%,{},${},{},{},{},{},{}".format(
-                        x["Lineup"][0],
-                        lu_names[0].replace("#", "-"),
-                        x["Lineup"][1],
-                        lu_names[1].replace("#", "-"),
-                        x["Lineup"][2],
-                        lu_names[2].replace("#", "-"),
-                        x["Lineup"][3],
-                        lu_names[3].replace("#", "-"),
-                        x["Lineup"][4],
-                        lu_names[4].replace("#", "-"),
-                        x["Lineup"][5],
-                        lu_names[5].replace("#", "-"),
-                        x["Lineup"][6],
-                        lu_names[6].replace("#", "-"),
-                        x["Lineup"][7],
-                        lu_names[7].replace("#", "-"),
-                        x["Lineup"][8],
-                        lu_names[8].replace("#", "-"),
-                        fpts_p,
-                        ceil_p,
-                        salary,
-                        win_p,
-                        Top1Percent_p,
-                        roi_p,
-                        own_p,
-                        roi_round,
-                        str(stacks[0][0]) + " " + str(stacks[0][1]),
-                        str(stacks[1][0]) + " " + str(stacks[1][1]),
-                        hitters_vs_pitcher,
-                        lu_type,
-                        simDupes
-                    )
-                else:
-                    lineup_str = "{}:{},{}:{},{}:{},{}:{},{}:{},{}:{},{}:{},{}:{},{}:{},{},{},{},{}%,{}%,{},{},{},{},{},{}".format(
-                        x["Lineup"][0],
-                        lu_names[0].replace("#", "-"),
-                        x["Lineup"][1],
-                        lu_names[1].replace("#", "-"),
-                        x["Lineup"][2],
-                        lu_names[2].replace("#", "-"),
-                        x["Lineup"][3],
-                        lu_names[3].replace("#", "-"),
-                        x["Lineup"][4],
-                        lu_names[4].replace("#", "-"),
-                        x["Lineup"][5],
-                        lu_names[5].replace("#", "-"),
-                        x["Lineup"][6],
-                        lu_names[6].replace("#", "-"),
-                        x["Lineup"][7],
-                        lu_names[7].replace("#", "-"),
-                        x["Lineup"][8],
-                        lu_names[8].replace("#", "-"),
-                        fpts_p,
-                        ceil_p,
-                        salary,
-                        win_p,
-                        Top1Percent_p,
-                        own_p,
-                        str(stacks[0][0]) + " " + str(stacks[0][1]),
-                        str(stacks[1][0]) + " " + str(stacks[1][1]),
-                        hitters_vs_pitcher,
-                        lu_type,
-                        simDupes
-                    )
+                lineup_str = format_lineup_fd(lu_names, x["Lineup"], fpts_p, ceil_p, salary, win_p, Top1Percent_p, roi_p, own_p, roi_round, stacks, hitters_vs_pitcher, lu_type, simDupes)
+            elif self.site == "ikb":
+                lineup_str = format_lineup_ikb(lu_names, x["Lineup"], fpts_p, ceil_p, salary, win_p, Top1Percent_p, roi_p, own_p, roi_round, stacks, hitters_vs_pitcher, lu_type, simDupes)
+
             unique[index] = lineup_str
 
+        self.write_output(unique)
+        self.write_player_exposure()
+
+    def write_output(self, unique):
         out_path = os.path.join(
             os.path.dirname(__file__),
             "../output/{}_gpp_sim_lineups_{}_{}.csv".format(
@@ -1795,7 +1783,7 @@ class MLB_GPP_Simulator:
                     )
                 else:
                     f.write(
-                        "P,P,C,1B,2B,3B,SS,OF,OF,OF,Fpts Proj,Ceiling,Salary,Win %,Top 10%, Proj. Own. Product,Stack1 Type,Stack2 Type,Num Opp Hitters,Lineup Type,Num Dupes\n"
+                        "P,P,C,1B,2B,3B,SS,OF,OF,OF,Fpts Proj,Ceiling,Salary,Win %,Top 10%,Proj. Own. Product,Stack1 Type,Stack2 Type,Num Opp Hitters,Lineup Type,Num Dupes\n"
                     )
             elif self.site == "fd":
                 if self.use_contest_data:
@@ -1806,36 +1794,39 @@ class MLB_GPP_Simulator:
                     f.write(
                         "P,C/1B,2B,3B,SS,OF,OF,OF,UTIL,Fpts Proj,Ceiling,Salary,Win %,Top 10%,Proj. Own. Product,Stack1 Type,Stack2 Type,Num Opp Hitters,Lineup Type,Num Dupes\n"
                     )
-
-            for fpts, lineup_str in unique.items():
+            elif self.site == "ikb":
+                if self.use_contest_data:
+                    f.write(
+                        "P_ID,P_ID,UTIL_ID,UTIL_ID,UTIL_ID,UTIL_ID,UTIL_ID,UTIL_ID,UTIL_ID,UTIL_ID,P_Name,P_Name,UTIL_Name,UTIL_Name,UTIL_Name,UTIL_Name,UTIL_Name,UTIL_Name,UTIL_Name,UTIL_Name,Fpts Proj,Ceiling,Salary,Win %,Top 10%,ROI%,Proj. Own. Product,Avg. Return,Stack1 Type,Stack2 Type,Num Opp Hitters,Lineup Type,Num Dupes\n"
+                    )
+                else:
+                    f.write(
+                        "P,P,UTIL,UTIL,UTIL,UTIL,UTIL,UTIL,UTIL,UTIL,Fpts Proj,Ceiling,Salary,Win %,Top 10%,Proj. Own. Product,Stack1 Type,Stack2 Type,Num Opp Hitters,Lineup Type,Num Dupes\n"
+                    )
+            for lineup_str in unique.values():
                 f.write("%s\n" % lineup_str)
 
+    def write_player_exposure(self):
         out_path = os.path.join(
             os.path.dirname(__file__),
             "../output/{}_gpp_sim_player_exposure_{}_{}.csv".format(
                 self.site, self.field_size, self.num_iterations
             ),
         )
-        # Initialize all player data
         unique_players = {player: {"Wins": 0, "Top1Percent": 0, "In": 0, "ROI": 0, "Cashes": 0} for player in self.player_dict}
-        # Loop over all lineups and their outcomes once to aggregate player data
+
         for val in self.field_lineups.values():
-            lineup_players = val["Lineup"]
-            for player in lineup_players:
+            for player in val["Lineup"]:
                 unique_players[player]["In"] += val['Count']
                 unique_players[player]["ROI"] += val["ROI"]
                 unique_players[player]["Cashes"] += val["Cashes"]
-                
-                # Only increment Wins and Top1Percent if the lineup has them
                 if val['Wins'] > 0:
-                    unique_players[player]["Wins"] += val['Wins']  # Distribute the win among the players in the lineup
+                    unique_players[player]["Wins"] += val['Wins']
                 if val['Top1Percent'] > 0:
-                    unique_players[player]["Top1Percent"] += val['Top1Percent']   # Distribute the top 1% finish among the players in the lineup
+                    unique_players[player]["Top1Percent"] += val['Top1Percent']
 
-        # Write the aggregated data to the output file
         with open(out_path, "w") as f:
             f.write("Player,Win%,Top1%,Cash%,Sim. Own%,Proj. Own%,Avg. Return\n")
-            
             for player, data in unique_players.items():
                 win_p = round(data["Wins"] / self.num_iterations * 100, 4)
                 Top1Percent_p = round(data["Top1Percent"] / self.num_iterations * 100, 4)
@@ -1846,8 +1837,7 @@ class MLB_GPP_Simulator:
                     cash_p = round(data["Cashes"] / data["In"] / self.num_iterations * 100, 4)
                     roi_p = round(data["ROI"] / data["In"] / self.num_iterations, 4)
                 field_p = round(data["In"] / self.field_size * 100, 4)
-                proj_own = self.player_dict[player]["Ownership"]*100
-                
+                proj_own = self.player_dict[player]["Ownership"] * 100
                 f.write(
                     "{},{}%,{}%,{}%,{}%,{}%,${}\n".format(
                         self.player_dict[player]['Name'].replace("#", "-"),
@@ -1855,7 +1845,7 @@ class MLB_GPP_Simulator:
                         Top1Percent_p,
                         cash_p,
                         field_p,
-                        proj_own/100,
+                        proj_own / 100,
                         roi_p,
                     )
                 )
