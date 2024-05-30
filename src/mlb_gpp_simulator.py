@@ -842,6 +842,12 @@ class MLB_GPP_Simulator:
     def remap(self, fieldnames):
         return ["P", "C/1B", "2B", "3B", "SS", "OF", "OF", "OF", "UTIL"]
 
+    def extract_id(self, cell_value):
+        if "(" in cell_value and ")" in cell_value:
+            return cell_value.split("(")[1].replace(")", "")
+        else:
+            return cell_value
+
     def load_lineups_from_file(self):
         print("loading lineups")
         i = 0
@@ -1380,7 +1386,8 @@ class MLB_GPP_Simulator:
     def run_simulation_for_team(
         team_id, team, pitcher_samples_dict, num_iterations, opp_pitcher_ids, player_dict
     ):
-        rng = np.random.Generator(np.random.PCG64())  # Create a new Generator instance
+        #rng = np.random.Generator(np.random.PCG64())  # Create a new Generator instance
+        rng = np.random.default_rng()
         existing_correlation_matrix = np.array([
             [1., 0.1855827, 0.17517424, 0.17516216, 0.17520923, 0.14935001, 0.15884211, 0.15799072, 0.16467186],
             [0.1855827, 1., 0.20226615, 0.15774969, 0.14370335, 0.14275675, 0.13338755, 0.13081362, 0.16291087],
@@ -1481,8 +1488,8 @@ class MLB_GPP_Simulator:
             print(f'Missing opposing pitcher data for team {team_id}')
 
         # Generate correlated normal samples
-        multi_normal = multivariate_normal(mean=[0] * 11, cov=covariance_matrix)
-        normal_samples = multi_normal.rvs(size=num_iterations)
+        # Generate correlated normal samples using numpy's RNG
+        normal_samples = rng.multivariate_normal(mean=[0] * 11, cov=covariance_matrix, size=num_iterations)
         
         # Transform normal samples to the Gamma distribution
         def transform_to_gamma(samples, means, stddevs, max_stddev_multiplier):
@@ -1517,16 +1524,16 @@ class MLB_GPP_Simulator:
         opposing_pitcher_samples = normal_samples[:, 10] * opposing_pitcher_stddev + opposing_pitcher_fpts
 
         # Combine all samples for correlation calculation
-        all_samples = np.hstack((hitters_gamma_samples, pitcher_samples[:, np.newaxis], opposing_pitcher_samples[:, np.newaxis]))
+        #all_samples = np.hstack((hitters_gamma_samples, pitcher_samples[:, np.newaxis], opposing_pitcher_samples[:, np.newaxis]))
 
         # print("NaNs in all_samples:", np.isnan(all_samples).sum())
         # print("Infs in all_samples:", np.isinf(all_samples).sum())
 
         # Replace infinite values with a large finite number
-        all_samples = np.where(np.isinf(all_samples), np.nan, all_samples)
+        #all_samples = np.where(np.isinf(all_samples), np.nan, all_samples)
 
         # Calculate the correlation matrix
-        correlation_matrix = np.corrcoef(all_samples.T, rowvar=True)
+        #correlation_matrix = np.corrcoef(all_samples.T, rowvar=True)
 
         #print("NaNs in correlation_matrix:", np.isnan(correlation_matrix).sum())
 
