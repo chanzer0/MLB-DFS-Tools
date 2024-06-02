@@ -1517,45 +1517,45 @@ class MLB_GPP_Simulator:
         pitcher_samples = normal_samples[:, num_hitters] * pitcher_stddev + pitcher_fpts
         opposing_pitcher_samples = normal_samples[:, num_hitters + 1] * opposing_pitcher_stddev + opposing_pitcher_fpts
 
-        # Combine all samples for correlation calculation
-        all_samples = np.hstack((hitters_gamma_samples, pitcher_samples[:, np.newaxis], opposing_pitcher_samples[:, np.newaxis]))
+        # # Combine all samples for correlation calculation
+        # all_samples = np.hstack((hitters_gamma_samples, pitcher_samples[:, np.newaxis], opposing_pitcher_samples[:, np.newaxis]))
 
-        #Replace infinite values with a large finite number
-        all_samples = np.where(np.isinf(all_samples), np.nan, all_samples)
+        # #Replace infinite values with a large finite number
+        # all_samples = np.where(np.isinf(all_samples), np.nan, all_samples)
 
-        #Calculate the correlation matrix
-        correlation_matrix = np.corrcoef(all_samples.T, rowvar=True)
+        # #Calculate the correlation matrix
+        # correlation_matrix = np.corrcoef(all_samples.T, rowvar=True)
 
-        #Create DataFrame for the correlation matrix
-        player_names = [f"{player['Name']} ({player['battingOrder']})" if player['battingOrder'] is not None else f"{player['Name']} (P)" for player in hitters_tuple_keys] + [f"{pitcher_tuple_key['Name']} (P)", f"{opposing_pitcher['Name']} (Opp P)"]
-        correlation_df = pd.DataFrame(correlation_matrix, columns=player_names, index=player_names)
+        # #Create DataFrame for the correlation matrix
+        # player_names = [f"{player['Name']} ({player['battingOrder']})" if player['battingOrder'] is not None else f"{player['Name']} (P)" for player in hitters_tuple_keys] + [f"{pitcher_tuple_key['Name']} (P)", f"{opposing_pitcher['Name']} (Opp P)"]
+        # correlation_df = pd.DataFrame(correlation_matrix, columns=player_names, index=player_names)
 
-        # Plotting the distributions
-        fig, (ax1, ax2) = plt.subplots(2, figsize=(10, 15))
-        fig.tight_layout(pad=5.0)
+        # # Plotting the distributions
+        # fig, (ax1, ax2) = plt.subplots(2, figsize=(10, 15))
+        # fig.tight_layout(pad=5.0)
 
-        for i, hitter in enumerate(hitters_tuple_keys):
-            sns.kdeplot(hitters_gamma_samples[:, i], ax=ax1, label=hitter['Name'])
+        # for i, hitter in enumerate(hitters_tuple_keys):
+        #     sns.kdeplot(hitters_gamma_samples[:, i], ax=ax1, label=hitter['Name'])
 
-        sns.kdeplot(pitcher_samples, ax=ax1, label=pitcher_tuple_key['Name'], linestyle='--')
-        sns.kdeplot(opposing_pitcher_samples, ax=ax1, label=opposing_pitcher['Name'] + " (Opp)", linestyle=':')
+        # sns.kdeplot(pitcher_samples, ax=ax1, label=pitcher_tuple_key['Name'], linestyle='--')
+        # sns.kdeplot(opposing_pitcher_samples, ax=ax1, label=opposing_pitcher['Name'] + " (Opp)", linestyle=':')
 
-        ax1.legend(loc='upper right', fontsize=14)
-        ax1.set_xlabel('Fpts', fontsize=14)
-        ax1.set_ylabel('Density', fontsize=14)
-        ax1.set_title(f'Team {team_id} Distributions', fontsize=14)
-        ax1.tick_params(axis='both', which='both', labelsize=14)
+        # ax1.legend(loc='upper right', fontsize=14)
+        # ax1.set_xlabel('Fpts', fontsize=14)
+        # ax1.set_ylabel('Density', fontsize=14)
+        # ax1.set_title(f'Team {team_id} Distributions', fontsize=14)
+        # ax1.tick_params(axis='both', which='both', labelsize=14)
 
-        y_min, y_max = ax1.get_ylim()
-        ax1.set_ylim(y_min, y_max * 1.1)
+        # y_min, y_max = ax1.get_ylim()
+        # ax1.set_ylim(y_min, y_max * 1.1)
 
-        ax1.set_xlim(-5, 70)
+        # ax1.set_xlim(-5, 70)
 
-        sns.heatmap(correlation_df, annot=True, ax=ax2, cmap='YlGnBu', cbar_kws={"shrink": .5})
-        ax2.set_title(f'Correlation Matrix for Team {team_id}', fontsize=14)
+        # sns.heatmap(correlation_df, annot=True, ax=ax2, cmap='YlGnBu', cbar_kws={"shrink": .5})
+        # ax2.set_title(f'Correlation Matrix for Team {team_id}', fontsize=14)
 
-        plt.savefig(f'output/simulation_plots/Team_{team_id}_Distributions_Correlation.png', bbox_inches='tight')
-        plt.close()
+        # plt.savefig(f'output/simulation_plots/Team_{team_id}_Distributions_Correlation.png', bbox_inches='tight')
+        # plt.close()
 
         temp_fpts_dict = {}
         for i, hitter in enumerate(hitters_tuple_keys):
