@@ -225,7 +225,7 @@ class MLB_GPP_Simulator:
 
         self.adjust_default_stdev()
         self.num_iterations = int(num_iterations)
-        print(self.player_dict)
+        #print(self.player_dict)
         self.get_optimal()
         self.fill_teams_dict() # Fill the teams_dict with player data
         self.player_dict = {str(v["ID"]): v for v in self.player_dict.values()}
@@ -256,8 +256,8 @@ class MLB_GPP_Simulator:
     # In order to make reasonable tournament lineups, we want to be close enough to the optimal that
     # a person could realistically land on this lineup. Skeleton here is taken from base `mlb_optimizer.py`
     def get_optimal(self):
-        for p, s in self.player_dict.items():
-            print(p, s["ID"])
+        #for p, s in self.player_dict.items():
+        #    print(p, s["ID"])
 
         problem = plp.LpProblem("MLB", plp.LpMaximize)
         lp_variables = {
@@ -1489,7 +1489,11 @@ class MLB_GPP_Simulator:
 
         # Generate correlated normal samples
         # Generate correlated normal samples using numpy's RNG
-        normal_samples = rng.multivariate_normal(mean=[0] * 11, cov=covariance_matrix, size=num_iterations)
+        # Adjust the size of normal_samples to match the actual number of hitters
+        num_hitters = len(hitters_tuple_keys)
+        # Ensure covariance matrix is adjusted for the actual number of players
+        adj_covariance_matrix = covariance_matrix[:num_hitters + 2, :num_hitters + 2]
+        normal_samples = rng.multivariate_normal(mean=[0] * (num_hitters + 2), cov=adj_covariance_matrix, size=num_iterations)
         
         # Transform normal samples to the Gamma distribution
         def transform_to_gamma(samples, means, stddevs, max_stddev_multiplier):
@@ -1500,73 +1504,58 @@ class MLB_GPP_Simulator:
                 shape = max((mean / stddev) ** 2, 0.1)  # Cap the shape parameter to a minimum value
                 scale = stddev ** 2 / mean
                 
-                # Debugging: Print shape and scale parameters
-                #print(f"Player {i}: mean={mean}, stddev={stddev}, shape={shape}, scale={scale}")
-                
                 transformed_samples = gamma.ppf(norm.cdf(samples[:, i]), shape, scale=scale)
                 
-                # Replace infinite values with a value 3 standard deviations above the mean
                 max_value = mean + max_stddev_multiplier * stddev
                 transformed_samples = np.where(np.isinf(transformed_samples), max_value, transformed_samples)
-                
-                # Count the number of infinite values
-                inf_count = np.isinf(transformed_samples).sum()
-                total_count = len(transformed_samples)
-                #print(f"Player {i}: {inf_count} out of {total_count} samples are inf ({inf_count / total_count:.2%})")
                 
                 gamma_samples[:, i] = transformed_samples
             return gamma_samples
 
-        hitters_gamma_samples = transform_to_gamma(normal_samples[:, :9], hitters_fpts, hitters_stddev, 2.5)
+        hitters_gamma_samples = transform_to_gamma(normal_samples[:, :num_hitters], hitters_fpts, hitters_stddev, 2.5)
 
-        # For pitchers, keep normal distribution as per your existing code
-        pitcher_samples = normal_samples[:, 9] * pitcher_stddev + pitcher_fpts
-        opposing_pitcher_samples = normal_samples[:, 10] * opposing_pitcher_stddev + opposing_pitcher_fpts
+        pitcher_samples = normal_samples[:, num_hitters] * pitcher_stddev + pitcher_fpts
+        opposing_pitcher_samples = normal_samples[:, num_hitters + 1] * opposing_pitcher_stddev + opposing_pitcher_fpts
 
         # Combine all samples for correlation calculation
-        #all_samples = np.hstack((hitters_gamma_samples, pitcher_samples[:, np.newaxis], opposing_pitcher_samples[:, np.newaxis]))
+        all_samples = np.hstack((hitters_gamma_samples, pitcher_samples[:, np.newaxis], opposing_pitcher_samples[:, np.newaxis]))
 
-        # print("NaNs in all_samples:", np.isnan(all_samples).sum())
-        # print("Infs in all_samples:", np.isinf(all_samples).sum())
+        #Replace infinite values with a large finite number
+        all_samples = np.where(np.isinf(all_samples), np.nan, all_samples)
 
-        # Replace infinite values with a large finite number
-        #all_samples = np.where(np.isinf(all_samples), np.nan, all_samples)
+        #Calculate the correlation matrix
+        correlation_matrix = np.corrcoef(all_samples.T, rowvar=True)
 
-        # Calculate the correlation matrix
-        #correlation_matrix = np.corrcoef(all_samples.T, rowvar=True)
+        #Create DataFrame for the correlation matrix
+        player_names = [f"{player['Name']} ({player['battingOrder']})" if player['battingOrder'] is not None else f"{player['Name']} (P)" for player in hitters_tuple_keys] + [f"{pitcher_tuple_key['Name']} (P)", f"{opposing_pitcher['Name']} (Opp P)"]
+        correlation_df = pd.DataFrame(correlation_matrix, columns=player_names, index=player_names)
 
-        #print("NaNs in correlation_matrix:", np.isnan(correlation_matrix).sum())
+        # Plotting the distributions
+        fig, (ax1, ax2) = plt.subplots(2, figsize=(10, 15))
+        fig.tight_layout(pad=5.0)
 
-        # Create DataFrame for the correlation matrix
-        # player_names = [f"{player['Name']} ({player['battingOrder']})" if player['battingOrder'] is not None else f"{player['Name']} (P)" for player in hitters_tuple_keys] + [f"{pitcher_tuple_key['Name']} (P)", f"{opposing_pitcher['Name']} (Opp P)"]
-        # correlation_df = pd.DataFrame(correlation_matrix, columns=player_names, index=player_names)
+        for i, hitter in enumerate(hitters_tuple_keys):
+            sns.kdeplot(hitters_gamma_samples[:, i], ax=ax1, label=hitter['Name'])
 
-        # # Plotting the distributions
-        # fig, (ax1, ax2) = plt.subplots(2, figsize=(10, 15))
-        # fig.tight_layout(pad=5.0)
+        sns.kdeplot(pitcher_samples, ax=ax1, label=pitcher_tuple_key['Name'], linestyle='--')
+        sns.kdeplot(opposing_pitcher_samples, ax=ax1, label=opposing_pitcher['Name'] + " (Opp)", linestyle=':')
 
-        # for i, hitter in enumerate(hitters_tuple_keys):
-        #     sns.kdeplot(hitters_gamma_samples[:, i], ax=ax1, label=hitter['Name'])
+        ax1.legend(loc='upper right', fontsize=14)
+        ax1.set_xlabel('Fpts', fontsize=14)
+        ax1.set_ylabel('Density', fontsize=14)
+        ax1.set_title(f'Team {team_id} Distributions', fontsize=14)
+        ax1.tick_params(axis='both', which='both', labelsize=14)
 
-        # sns.kdeplot(pitcher_samples, ax=ax1, label=pitcher_tuple_key['Name'], linestyle='--')
-        # sns.kdeplot(opposing_pitcher_samples, ax=ax1, label=opposing_pitcher['Name'] + " (Opp)", linestyle=':')
+        y_min, y_max = ax1.get_ylim()
+        ax1.set_ylim(y_min, y_max * 1.1)
 
-        # ax1.legend(loc='upper right', fontsize=14)
-        # ax1.set_xlabel('Fpts', fontsize=14)
-        # ax1.set_ylabel('Density', fontsize=14)
-        # ax1.set_title(f'Team {team_id} Distributions', fontsize=14)
-        # ax1.tick_params(axis='both', which='both', labelsize=14)
+        ax1.set_xlim(-5, 70)
 
-        # y_min, y_max = ax1.get_ylim()
-        # ax1.set_ylim(y_min, y_max * 1.1)
+        sns.heatmap(correlation_df, annot=True, ax=ax2, cmap='YlGnBu', cbar_kws={"shrink": .5})
+        ax2.set_title(f'Correlation Matrix for Team {team_id}', fontsize=14)
 
-        # ax1.set_xlim(-5, 70)
-
-        # sns.heatmap(correlation_df, annot=True, ax=ax2, cmap='YlGnBu', cbar_kws={"shrink": .5})
-        # ax2.set_title(f'Correlation Matrix for Team {team_id}', fontsize=14)
-
-        # plt.savefig(f'output/simulation_plots/Team_{team_id}_Distributions_Correlation.png', bbox_inches='tight')
-        # plt.close()
+        plt.savefig(f'output/simulation_plots/Team_{team_id}_Distributions_Correlation.png', bbox_inches='tight')
+        plt.close()
 
         temp_fpts_dict = {}
         for i, hitter in enumerate(hitters_tuple_keys):
