@@ -1517,7 +1517,7 @@ class MLB_GPP_Simulator:
         pitcher_samples = normal_samples[:, num_hitters] * pitcher_stddev + pitcher_fpts
         opposing_pitcher_samples = normal_samples[:, num_hitters + 1] * opposing_pitcher_stddev + opposing_pitcher_fpts
 
-        # Combine all samples for correlation calculation
+        # #Combine all samples for correlation calculation
         # all_samples = np.hstack((hitters_gamma_samples, pitcher_samples[:, np.newaxis], opposing_pitcher_samples[:, np.newaxis]))
 
         # #Replace infinite values with a large finite number
@@ -1622,10 +1622,6 @@ class MLB_GPP_Simulator:
             temp_fpts_dict.update(res)
 
         fpts_array = np.zeros(shape=(len(self.field_lineups), self.num_iterations))
-
-        #print what proportion of all values in temp_fpts_dict are greater than 50 and greater than 100 by making one giant array of all values
-        all_fpts_values = np.array(list(temp_fpts_dict.values()))
-
 
         field_lineups_count = np.array(
             [self.field_lineups[idx]["Count"] for idx in self.field_lineups.keys()]
