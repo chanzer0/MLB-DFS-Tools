@@ -1493,12 +1493,14 @@ class MLB_GPP_Simulator:
         num_hitters = len(hitters_tuple_keys)
         # Ensure covariance matrix is adjusted for the actual number of players
         adj_covariance_matrix = covariance_matrix[:num_hitters + 2, :num_hitters + 2]
-        normal_samples = rng.multivariate_normal(mean=[0] * (num_hitters + 2), cov=adj_covariance_matrix, size=num_iterations)
         
-        # Transform normal samples to the Gamma distribution
-        def transform_to_gamma(samples, means, stddevs, max_stddev_multiplier):
+        # Transform normal samples to the Gamma distribution with selective resampling
+        def transform_to_gamma_with_resampling(samples, means, stddevs, max_stddev_multiplier, covariance_matrix):
+            num_samples = samples.shape[1]
             gamma_samples = np.zeros_like(samples)
-            for i in range(samples.shape[1]):
+            max_values = means + max_stddev_multiplier * stddevs
+            
+            for i in range(num_samples):
                 mean = means[i]
                 stddev = stddevs[i]
                 shape = max((mean / stddev) ** 2, 0.1)  # Cap the shape parameter to a minimum value
@@ -1506,56 +1508,69 @@ class MLB_GPP_Simulator:
                 
                 transformed_samples = gamma.ppf(norm.cdf(samples[:, i]), shape, scale=scale)
                 
-                max_value = mean + max_stddev_multiplier * stddev
-                transformed_samples = np.where(np.isinf(transformed_samples), max_value, transformed_samples)
+                while np.any(transformed_samples > max_values[i]):
+                    # Find indices where the transformed samples exceed the max value
+                    invalid_indices = np.where(transformed_samples > max_values[i])[0]
+                    # Resample only those indices
+                    resampled_normal = rng.multivariate_normal(mean=[0] * num_samples, cov=covariance_matrix, size=len(invalid_indices))
+                    samples[invalid_indices, :] = resampled_normal
+                    transformed_samples[invalid_indices] = gamma.ppf(norm.cdf(samples[invalid_indices, i]), shape, scale=scale)
                 
                 gamma_samples[:, i] = transformed_samples
             return gamma_samples
 
-        hitters_gamma_samples = transform_to_gamma(normal_samples[:, :num_hitters], hitters_fpts, hitters_stddev, 2.5)
+        # Generate the initial normal samples
+        normal_samples = rng.multivariate_normal(mean=[0] * (num_hitters + 2), cov=adj_covariance_matrix, size=num_iterations)
+        
+        # Generate the gamma samples with selective resampling
+        means = np.concatenate([hitters_fpts, [pitcher_fpts, opposing_pitcher_fpts]])
+        stddevs = np.concatenate([hitters_stddev, [pitcher_stddev, opposing_pitcher_stddev]])
+        gamma_samples = transform_to_gamma_with_resampling(normal_samples, means, stddevs, 5, adj_covariance_matrix)
 
-        pitcher_samples = normal_samples[:, num_hitters] * pitcher_stddev + pitcher_fpts
-        opposing_pitcher_samples = normal_samples[:, num_hitters + 1] * opposing_pitcher_stddev + opposing_pitcher_fpts
+        # Split the gamma samples into hitters, pitcher, and opposing pitcher
+        hitters_gamma_samples = gamma_samples[:, :num_hitters]
+        pitcher_samples = gamma_samples[:, num_hitters]
+        opposing_pitcher_samples = gamma_samples[:, num_hitters + 1]
 
-        # # Combine all samples for correlation calculation
-        # all_samples = np.hstack((hitters_gamma_samples, pitcher_samples[:, np.newaxis], opposing_pitcher_samples[:, np.newaxis]))
+        # Combine all samples for correlation calculation
+        all_samples = np.hstack((hitters_gamma_samples, pitcher_samples[:, np.newaxis], opposing_pitcher_samples[:, np.newaxis]))
 
-        # #Replace infinite values with a large finite number
-        # all_samples = np.where(np.isinf(all_samples), np.nan, all_samples)
+        #Replace infinite values with a large finite number
+        all_samples = np.where(np.isinf(all_samples), np.nan, all_samples)
 
-        # #Calculate the correlation matrix
-        # correlation_matrix = np.corrcoef(all_samples.T, rowvar=True)
+        #Calculate the correlation matrix
+        correlation_matrix = np.corrcoef(all_samples.T, rowvar=True)
 
-        # #Create DataFrame for the correlation matrix
-        # player_names = [f"{player['Name']} ({player['battingOrder']})" if player['battingOrder'] is not None else f"{player['Name']} (P)" for player in hitters_tuple_keys] + [f"{pitcher_tuple_key['Name']} (P)", f"{opposing_pitcher['Name']} (Opp P)"]
-        # correlation_df = pd.DataFrame(correlation_matrix, columns=player_names, index=player_names)
+        #Create DataFrame for the correlation matrix
+        player_names = [f"{player['Name']} ({player['battingOrder']})" if player['battingOrder'] is not None else f"{player['Name']} (P)" for player in hitters_tuple_keys] + [f"{pitcher_tuple_key['Name']} (P)", f"{opposing_pitcher['Name']} (Opp P)"]
+        correlation_df = pd.DataFrame(correlation_matrix, columns=player_names, index=player_names)
 
-        # # Plotting the distributions
-        # fig, (ax1, ax2) = plt.subplots(2, figsize=(10, 15))
-        # fig.tight_layout(pad=5.0)
+        # Plotting the distributions
+        fig, (ax1, ax2) = plt.subplots(2, figsize=(10, 15))
+        fig.tight_layout(pad=5.0)
 
-        # for i, hitter in enumerate(hitters_tuple_keys):
-        #     sns.kdeplot(hitters_gamma_samples[:, i], ax=ax1, label=hitter['Name'])
+        for i, hitter in enumerate(hitters_tuple_keys):
+            sns.kdeplot(hitters_gamma_samples[:, i], ax=ax1, label=hitter['Name'])
 
-        # sns.kdeplot(pitcher_samples, ax=ax1, label=pitcher_tuple_key['Name'], linestyle='--')
-        # sns.kdeplot(opposing_pitcher_samples, ax=ax1, label=opposing_pitcher['Name'] + " (Opp)", linestyle=':')
+        sns.kdeplot(pitcher_samples, ax=ax1, label=pitcher_tuple_key['Name'], linestyle='--')
+        sns.kdeplot(opposing_pitcher_samples, ax=ax1, label=opposing_pitcher['Name'] + " (Opp)", linestyle=':')
 
-        # ax1.legend(loc='upper right', fontsize=14)
-        # ax1.set_xlabel('Fpts', fontsize=14)
-        # ax1.set_ylabel('Density', fontsize=14)
-        # ax1.set_title(f'Team {team_id} Distributions', fontsize=14)
-        # ax1.tick_params(axis='both', which='both', labelsize=14)
+        ax1.legend(loc='upper right', fontsize=14)
+        ax1.set_xlabel('Fpts', fontsize=14)
+        ax1.set_ylabel('Density', fontsize=14)
+        ax1.set_title(f'Team {team_id} Distributions', fontsize=14)
+        ax1.tick_params(axis='both', which='both', labelsize=14)
 
-        # y_min, y_max = ax1.get_ylim()
-        # ax1.set_ylim(y_min, y_max * 1.1)
+        y_min, y_max = ax1.get_ylim()
+        ax1.set_ylim(y_min, y_max * 1.1)
 
-        # ax1.set_xlim(-5, 70)
+        ax1.set_xlim(-5, 70)
 
-        # sns.heatmap(correlation_df, annot=True, ax=ax2, cmap='YlGnBu', cbar_kws={"shrink": .5})
-        # ax2.set_title(f'Correlation Matrix for Team {team_id}', fontsize=14)
+        sns.heatmap(correlation_df, annot=True, ax=ax2, cmap='YlGnBu', cbar_kws={"shrink": .5})
+        ax2.set_title(f'Correlation Matrix for Team {team_id}', fontsize=14)
 
-        # plt.savefig(f'output/simulation_plots/Team_{team_id}_Distributions_Correlation.png', bbox_inches='tight')
-        # plt.close()
+        plt.savefig(f'output/simulation_plots/Team_{team_id}_Distributions_Correlation.png', bbox_inches='tight')
+        plt.close()
 
         temp_fpts_dict = {}
         for i, hitter in enumerate(hitters_tuple_keys):
@@ -1622,11 +1637,19 @@ class MLB_GPP_Simulator:
             temp_fpts_dict.update(res)
 
         fpts_array = np.zeros(shape=(len(self.field_lineups), self.num_iterations))
-        # converting payout structure into an np friendly format, could probably just do this in the load contest function
-        # print(self.field_lineups)
-        # print(temp_fpts_dict)
-        # print(payout_array)
-        # print(self.player_dict[('patrick mahomes', 'FLEX', 'KC')])
+
+        #print what proportion of all values in temp_fpts_dict are greater than 50 and greater than 100 by making one giant array of all values
+        all_fpts_values = np.array(list(temp_fpts_dict.values()))
+        proportion_greater_than_50 = np.mean(all_fpts_values > 50)
+        proportion_greater_than_75 = np.mean(all_fpts_values > 75)
+        proportion_greater_than_100 = np.mean(all_fpts_values > 100)
+        
+        print(f"Proportion of values greater than 50: {proportion_greater_than_50:.2%}")
+        print(f"Proportion of values greater than 75: {proportion_greater_than_75:.2%}")
+        print(f"Proportion of values greater than 100: {proportion_greater_than_100:.2%}")
+
+
+
         field_lineups_count = np.array(
             [self.field_lineups[idx]["Count"] for idx in self.field_lineups.keys()]
         )
