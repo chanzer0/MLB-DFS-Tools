@@ -86,7 +86,7 @@ The structure for the config is as follows:
 
 ```
 {
-    "projection_path": "projections.csv", // This is where projections are loaded from -- the required columns are "Name", "Salary", "Pos", "Team" and "Fpts" ("Own%" and "StdDev" are optional but recommended)
+    "projection_path": "projections.csv", // This is where projections are loaded from -- the required columns are "Name", "Salary", "Position", "Team" and "Fpts" ("Own%" and "StdDev" are optional but recommended)
     "player_path": "player_ids.csv", // This is where player ids are loaded from -- this is the direct player ID export from DraftKings/Fanduel found on the contest or edit lineups page, no changes are required.
     "contest_structure_path": "contest_structure.csv", // This is where GPP sim tournament structure is loaded from -- as seen above, the required columns are "Place", "Payout", "Field Size", "Entry Fee"
     "team_stacks_path" : "team_stacks.csv", //This is where field ownership is of specific team stacks (minimum 4 players from the same team in a lineup). Required columns are "Team" (abbreviation) and "Own%"
