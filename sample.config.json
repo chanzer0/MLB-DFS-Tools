@@ -8,10 +8,15 @@
     "projection_minimum": 3,
     "randomness": 100,
     "at_least": {
-    
     },
     "at_most": {
     },
+    "primary_stack_min": 4,
+    "primary_stack_max": 5,
+    "secondary_stack_min": 3,
+    "secondary_stack_max": 4,
+    "primary_stack_teams": "NYY,ATL,SD,TEX",
+    "secondary_stack_teams": "*",
     "min_lineup_salary": 49200,
     "max_pct_off_optimal": 0.2,
     "pct_field_using_stacks" : 0.75,  
