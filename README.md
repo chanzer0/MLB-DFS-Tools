@@ -86,14 +86,18 @@ The structure for the config is as follows:
 
 ```
 {
-    "projection_path": "projections.csv", // This is where projections are loaded from -- the required columns are "Name", "Salary", "Pos", "Team" and "Fpts"
-    "ownership_path": "ownership.csv", // This is where ownership is loaded from -- the required columns are "Name", "Team", "Pos" and "Own%"
+    "projection_path": "projections.csv", // This is where projections are loaded from -- the required columns are "Name", "Salary", "Position", "Team" and "Fpts" ("Own%" and "StdDev" are optional but recommended)
     "player_path": "player_ids.csv", // This is where player ids are loaded from -- this is the direct player ID export from DraftKings/Fanduel found on the contest or edit lineups page, no changes are required.
-    "boom_bust_path": "boom_bust.csv", // This is where boom/bust data (top golfers) is loaded from -- the required columns are "Name", "Pos", "Team", "StdDev", and "Ceiling"
     "contest_structure_path": "contest_structure.csv", // This is where GPP sim tournament structure is loaded from -- as seen above, the required columns are "Place", "Payout", "Field Size", "Entry Fee"
     "team_stacks_path" : "team_stacks.csv", //This is where field ownership is of specific team stacks (minimum 4 players from the same team in a lineup). Required columns are "Team" (abbreviation) and "Own%"
     "projection_minimum": 5,
     "randomness": 100,
+    "primary_stack_min": 4, // the minimum number of players from a team stack to use in a primary stack
+    "primary_stack_max": 5, // the maximum number of players from a team stack to use in a primary stack
+    "secondary_stack_min": 3, // the minimum number of players from a team stack to use in a secondary stack
+    "secondary_stack_max": 4, // the maximum number of players from a team stack to use in a secondary stack
+    "primary_stack_teams": "NYY,ATL,SD,TEX", // the teams to use in primary stacks (use "*" for all teams)
+    "secondary_stack_teams": "*", // the teams to use in secondary stacks (use "*" for all teams)
     "at_least": {
         "2": [
             ["Mike Trout","Shohei Ohtani"] // This will use at least 2 of these players

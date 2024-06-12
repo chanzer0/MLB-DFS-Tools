@@ -5,3 +5,5 @@ historical_data/*
 config.json
 mlb-simmer/*
 venv/*
+dk_data/*
+fd_data/*
