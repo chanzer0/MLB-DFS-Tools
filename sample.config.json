@@ -5,7 +5,7 @@
     "boom_bust_path": "boom_bust.csv", 
     "contest_structure_path": "contest_structure.csv", 
     "team_stacks_path" : "team_stacks.csv",
-    "projection_minimum": 3,
+    "projection_minimum": 1,
     "randomness": 100,
     "at_least": {
     },
@@ -23,5 +23,6 @@
     "default_hitter_var" : 0.5, 
     "default_pitcher_var" : 0.3,
     "pct_max_stack_len" : 0.65,
-    "num_hitters_vs_pitcher" : 0
+    "num_hitters_vs_pitcher" : 0,
+    "pct_field_using_secondary_stacks" : 0.7
     }
