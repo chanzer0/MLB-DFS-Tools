@@ -1,4 +1,5 @@
 from collections import Counter
+import itertools
 import json
 import csv
 import os
@@ -60,6 +61,10 @@ class MLB_Optimizer:
         )
         self.load_player_ids(player_path)
 
+    # make column lookups on datafiles case insensitive
+    def lower_first(self, iterator):
+        return itertools.chain([next(iterator).lower()], iterator)
+
     # Load config from file
     def load_config(self):
         with open(
@@ -71,11 +76,11 @@ class MLB_Optimizer:
     # Load player IDs for exporting
     def load_player_ids(self, path):
         with open(path, encoding="utf-8-sig") as file:
-            reader = csv.DictReader(file)
+            reader = csv.DictReader(self.lower_first(file))
             for row in reader:
-                name_key = "Name" if self.site == "dk" else "Nickname"
+                name_key = "name" if self.site == "dk" else "nickname"
                 player_name = row[name_key]
-                matchup = row["Game Info"].split(" ")[0]
+                matchup = row["game info"].split(" ")[0]
 
                 # find the key in self.player_dict that matches the player_name
                 player_tuple = None
@@ -89,10 +94,10 @@ class MLB_Optimizer:
 
                 if player_tuple in self.player_dict:
                     if self.site == "dk":
-                        self.player_dict[player_tuple]["ID"] = int(row["ID"])
+                        self.player_dict[player_tuple]["ID"] = int(row["id"])
                         self.player_dict[player_tuple]["Matchup"] = matchup
                     else:
-                        self.player_dict[player_tuple]["ID"] = str(row["Id"])
+                        self.player_dict[player_tuple]["ID"] = str(row["id"])
                         self.player_dict[player_tuple]["Matchup"] = matchup
 
     def load_rules(self):
@@ -131,32 +136,32 @@ class MLB_Optimizer:
     def load_projections(self, path):
         # Read projections into a dictionary
         with open(path, encoding="utf-8-sig") as file:
-            reader = csv.DictReader(file)
+            reader = csv.DictReader(self.lower_first(file))
             for row in reader:
-                player_name = row["Name"].replace("-", "#")
-                projection = float(row["Fpts"])
+                player_name = row["name"].replace("-", "#")
+                projection = float(row["fpts"])
 
-                stddev = float(row["StdDev"]) if "StdDev" in row else projection * 0.4
+                stddev = float(row["stddev"]) if "stddev" in row else projection * 0.4
 
                 if projection < self.projection_minimum:
                     continue
 
                 order = None
                 try:
-                    order = int(row["Order"])
+                    order = int(row["ord"])
                 except ValueError:
                     order = 100
 
-                player_name = row["Name"].replace("-", "#")
-                position = row["Position"].replace("SP", "P").replace("RP", "P")
-                team = row["Team"]
+                player_name = row["name"].replace("-", "#")
+                position = row["pos"].replace("SP", "P").replace("RP", "P")
+                team = row["team"]
 
                 self.player_dict[(player_name, position, team)] = {
                     "Fpts": projection,
                     "ID": 0,
-                    "Salary": int(row["Salary"].replace(",", "")),
-                    "Name": row["Name"],
-                    "Ownership": float(row["Own%"]) if "Own%" in row else 0,
+                    "Salary": int(row["salary"].replace(",", "")),
+                    "Name": row["name"],
+                    "Ownership": float(row["own%"]) if "own%" in row else 0,
                     "BattingOrder": order,
                     "StdDev": stddev,
                     "Team": team,
