@@ -156,6 +156,13 @@ class MLB_Optimizer:
                 position = row["pos"].replace("SP", "P").replace("RP", "P")
                 team = row["team"]
 
+                if self.site == "fd":
+                    if "C/1B" in position:
+                        position = "C1B"
+                    # add a util position for all non-pitchers
+                    if "P" not in position:
+                        position += "/UTIL"
+
                 self.player_dict[(player_name, position, team)] = {
                     "Fpts": projection,
                     "ID": 0,
@@ -193,11 +200,10 @@ class MLB_Optimizer:
                     name=f"{player_tuple}_{pos}_{player_id}", cat=plp.LpBinary
                 )
 
-        # for player_tuple in self.player_dict:
-        #     print(player_tuple)
-
-        # for lp_var in lp_variables:
-        #     print(lp_variables[lp_var])
+        # for player_tuple, items in self.player_dict.items():
+        #     print(
+        #         f"{player_tuple} - fpts:{items['Fpts']} - ${items['Salary']} - pos:{items['Position']} - team:{items['Team']} - id:{items['ID']}, matchup:{items['Matchup']}"
+        #     )
 
         # set the objective - maximize fpts & set randomness amount from config
         self.problem += (
